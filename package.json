@@ -1,0 +1,19 @@
+{
+  "name": "splitsmart",
+  "version": "1.0.0",
+  "description": "SplitSmart - A expense splitting application",
+  "scripts": {
+    "dev": "concurrently \"npm run frontend:dev\" \"npm run backend:dev\"",
+    "build": "concurrently \"npm run frontend:build\" \"npm run backend:build\"",
+    "start": "concurrently \"npm run frontend:start\" \"npm run backend:start\"",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:build": "cd frontend && npm run build",
+    "frontend:start": "cd frontend && npm run preview",
+    "backend:dev": "cd backend && npm run dev",
+    "backend:build": "cd backend && npm install",
+    "backend:start": "cd backend && npm start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
