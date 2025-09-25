@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 
-// MongoDB connection string from user preferences
-const MONGODB_URI = 'mongodb+srv://kavishkhanna06_db_user:Kavish12@splitwise.wgwkhfv.mongodb.net/splitwise?retryWrites=true&w=majority&appName=SplitSmart';
+// MongoDB connection string from environment variable
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://kavishkhanna06_db_user:Kavish12@splitwise.wgwkhfv.mongodb.net/splitwise?retryWrites=true&w=majority&appName=SplitSmart';
 
 const connectDatabase = async () => {
   try {
