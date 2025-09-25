@@ -32,11 +32,6 @@ app.use(express.json());
 // Serve static files from the React app build directory in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
-  
-  // Handle React routing, return all requests to React app
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../dist/index.html'));
-  });
 }
 
 // Health check endpoint
@@ -468,6 +463,13 @@ connectDatabase().catch((error) => {
   console.error('Failed to connect to MongoDB:', error);
   console.log('Running in demo mode without database connection');
 });
+
+// Handle React routing, return all requests to React app
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
+}
 
 // Start server
 app.listen(PORT, () => {
