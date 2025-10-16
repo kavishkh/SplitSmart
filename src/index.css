@@ -1,0 +1,426 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* White theme as default */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 0%;
+    --popover: 0 0% 98%;
+    --popover-foreground: 0 0% 0%;
+    
+    --primary: 158 64% 52%;
+    --primary-foreground: 0 0% 0%;
+    --primary-glow: 158 64% 62%;
+    
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 270 75% 65%;
+    --accent-foreground: 0 0% 0%;
+    
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 0%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 0%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 0%;
+    
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 158 64% 52%;
+    --radius: 12px;
+    
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(270 75% 75%));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 71% 55%));
+    --gradient-warm: linear-gradient(135deg, hsl(var(--warning)), hsl(25 100% 60%));
+    --gradient-bg: linear-gradient(180deg, hsl(0 0% 100%), hsl(0 0% 98%));
+    
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 0%;
+    --sidebar-primary: 158 64% 52%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 0 0% 96%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-border: 0 0% 90%;
+    --sidebar-ring: 158 64% 52%;
+  }
+
+  /* Black theme variables */
+  .black-theme {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 5%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 5%;
+    --popover-foreground: 0 0% 100%;
+    
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --primary-glow: 0 0% 90%;
+    
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 70%;
+    --accent: 0 0% 20%;
+    --accent-foreground: 0 0% 100%;
+    
+    --success: 120 100% 30%;
+    --success-foreground: 0 0% 100%;
+    --warning: 45 100% 50%;
+    --warning-foreground: 0 0% 0%;
+    --destructive: 0 100% 40%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --border: 0 0% 20%;
+    --input: 0 0% 20%;
+    --ring: 0 0% 100%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    background: white !important;
+  }
+
+  body {
+    @apply bg-white;
+    background: white;
+    background-image: linear-gradient(180deg, white, #f8f8f8);
+    min-height: 100vh;
+    transition: all 0.3s ease;
+  }
+
+  .black-theme body {
+    background: black;
+    background-image: linear-gradient(180deg, #000, #111);
+    color: white;
+  }
+}
+
+@layer components {
+  /* Gradient backgrounds */
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+    box-shadow: 0 4px 20px hsl(var(--primary) / 0.3);
+  }
+  
+  .bg-gradient-accent {
+    background: var(--gradient-accent);
+    box-shadow: 0 4px 20px hsl(var(--accent) / 0.3);
+  }
+  
+  .bg-gradient-success {
+    background: var(--gradient-success);
+    box-shadow: 0 4px 20px hsl(var(--success) / 0.3);
+  }
+  
+  .bg-gradient-warm {
+    background: var(--gradient-warm);
+    box-shadow: 0 4px 20px hsl(var(--warning) / 0.3);
+  }
+
+  /* Enhanced animated elements */
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  .animate-bounce-subtle {
+    animation: bounce-subtle 2s ease-in-out infinite;
+  }
+
+  .animate-gradient-shift {
+    background-size: 400% 400%;
+    animation: gradient-shift 3s ease-in-out infinite;
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--primary) / 0.1),
+      transparent
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 2s ease-in-out infinite;
+  }
+  
+  /* New animations for login page */
+  .animate-shake {
+    animation: shake 0.5s ease-in-out;
+  }
+  
+  .animate-fade-in-scale {
+    animation: fade-in-scale 0.5s ease-out;
+  }
+
+  /* Interactive cards with enhanced animations */
+  .card-interactive {
+    @apply transition-all duration-500 ease-out hover:scale-[1.03] cursor-pointer;
+    @apply shadow-lg hover:shadow-2xl hover:-translate-y-1;
+  }
+  
+  .card-balance {
+    @apply card-interactive bg-gradient-to-br from-white/90 to-white/60 backdrop-blur-xl;
+    @apply border border-gray-200/50 hover:border-primary/30;
+  }
+
+  .btn-glass {
+    @apply bg-white/20 backdrop-blur-md border border-white/30;
+    @apply hover:bg-white/30 hover:border-primary/30;
+    @apply transition-all duration-300;
+  }
+
+  /* Theme transition effects */
+  .theme-transition {
+    @apply transition-all duration-300 ease-in-out;
+  }
+
+  /* Enhanced notification styles */
+  .notification-glow {
+    @apply animate-pulse;
+    box-shadow: 0 0 20px hsl(var(--destructive) / 0.6);
+  }
+
+  /* Animated counters */
+  .counter-up {
+    @apply animate-pulse;
+  }
+  
+  .balance-positive {
+    @apply text-green-600 font-bold;
+  }
+  
+  .balance-negative {
+    @apply text-red-600 font-bold;
+  }
+
+  /* Loading states */
+  .loading-skeleton {
+    @apply animate-pulse bg-gray-200 rounded;
+  }
+  
+  /* Shadow effects */
+  .shadow-glow {
+    box-shadow: 0 4px 20px hsl(var(--primary) / 0.3);
+  }
+  
+  .shadow-elegant {
+    box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.1);
+  }
+
+  /* Black theme dialog styles */
+  .black-theme .dialog-content {
+    background-color: #0a0a0a;
+    color: white;
+    border: 1px solid #333;
+  }
+
+  .black-theme .dialog-header {
+    color: white;
+  }
+
+  .black-theme .dialog-title {
+    color: white;
+  }
+
+  .black-theme .input-field {
+    background-color: #1a1a1a;
+    color: white;
+    border: 1px solid #333;
+  }
+
+  .black-theme .input-field:focus {
+    border-color: white;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2);
+  }
+
+  .black-theme .button-primary {
+    background-color: white;
+    color: black;
+  }
+
+  .black-theme .button-primary:hover {
+    background-color: #e0e0e0;
+  }
+
+  .black-theme .button-secondary {
+    background-color: #333;
+    color: white;
+    border: 1px solid #444;
+  }
+
+  .black-theme .button-secondary:hover {
+    background-color: #444;
+  }
+
+  .black-theme .card {
+    background-color: #111;
+    border: 1px solid #333;
+  }
+
+  .black-theme .badge {
+    background-color: #333;
+    color: white;
+  }
+}
+
+/* Enhanced Keyframe Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { 
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+    transform: scale(1);
+  }
+  50% { 
+    box-shadow: 0 0 40px hsl(var(--primary) / 0.6);
+    transform: scale(1.05);
+  }
+}
+
+@keyframes bounce-subtle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-5px); }
+}
+
+@keyframes counter-up {
+  from { 
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-left {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-right {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in-scale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes gradient-shift {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes glow-pulse {
+  0%, 100% {
+    filter: brightness(1) saturate(1);
+    transform: scale(1);
+  }
+  50% {
+    filter: brightness(1.2) saturate(1.3);
+    transform: scale(1.02);
+  }
+}
+
+/* New animations for login page */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
