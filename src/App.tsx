@@ -21,21 +21,22 @@ import NotFound from "./pages/NotFound";
 import JoinGroup from "./pages/JoinGroup";
 import Settlements from "./pages/Settlements";
 import Payments from "./pages/Payments";
+import AcceptInvitation from "./pages/AcceptInvitation";
 
 import GooglePayExpenses from "./pages/GooglePayExpenses";
 import GooglePayTransactions from "./pages/GooglePayTransactions";
 import { useEffect } from "react";
 
 // Error Boundary Component
-class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean}> {
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasError: boolean, error: Error | null}> {
   constructor(props: {children: React.ReactNode}) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error: Error) {
     console.error('ErrorBoundary caught an error:', error);
-    return { hasError: true };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
@@ -46,17 +47,37 @@ class ErrorBoundary extends React.Component<{children: React.ReactNode}, {hasErr
     if (this.state.hasError) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="text-center p-8 bg-card rounded-lg shadow-lg">
+          <div className="text-center p-8 bg-card rounded-lg shadow-lg max-w-2xl">
             <h1 className="text-2xl font-bold text-foreground mb-4">Something went wrong</h1>
             <p className="text-muted-foreground mb-4">
               We're sorry, but something went wrong. Please try refreshing the page.
             </p>
-            <button 
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-              onClick={() => window.location.reload()}
-            >
-              Refresh Page
-            </button>
+            {this.state.error && (
+              <div className="bg-destructive/10 text-destructive p-4 rounded-md mb-4 text-left">
+                <p className="font-semibold">Error Details:</p>
+                <p className="text-sm">{this.state.error.message}</p>
+                {this.state.error.stack && (
+                  <details className="mt-2">
+                    <summary className="text-xs cursor-pointer">Stack trace</summary>
+                    <pre className="text-xs mt-2 whitespace-pre-wrap">{this.state.error.stack}</pre>
+                  </details>
+                )}
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <button 
+                className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                onClick={() => window.location.href = '/'}
+              >
+                Go to Home Page
+              </button>
+              <button 
+                className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90"
+                onClick={() => window.location.reload()}
+              >
+                Refresh Page
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -88,6 +109,7 @@ const App = () => {
                       <Sonner />
                       <Routes>
                         <Route path="/login" element={<Login />} />
+                        <Route path="/accept" element={<AcceptInvitation />} />
                         <Route path="/" element={
                           <ProtectedRoute>
                             <Index />

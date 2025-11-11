@@ -28,10 +28,22 @@ interface EditExpenseModalProps {
 }
 
 export const EditExpenseModal = ({ open, onOpenChange, expense, groups, onSave }: EditExpenseModalProps) => {
-  const [description, setDescription] = useState(expense.description);
-  const [amount, setAmount] = useState(expense.amount.toString());
-  const [category, setCategory] = useState(expense.category);
-  const [selectedGroupId, setSelectedGroupId] = useState(expense.groupId);
+  // Add safety checks for expense object
+  const safeExpense = expense || {
+    id: "",
+    description: "",
+    amount: 0,
+    category: "other",
+    groupId: "",
+    paidBy: "",
+    splitBetween: [],
+    date: new Date().toISOString()
+  };
+
+  const [description, setDescription] = useState(safeExpense.description || "");
+  const [amount, setAmount] = useState((safeExpense.amount || 0).toString());
+  const [category, setCategory] = useState(safeExpense.category || "other");
+  const [selectedGroupId, setSelectedGroupId] = useState(safeExpense.groupId || "");
 
   const categories = [
     { id: "food", name: "Food & Dining", icon: "🍽️" },
@@ -72,7 +84,7 @@ export const EditExpenseModal = ({ open, onOpenChange, expense, groups, onSave }
     }
     
     onSave({
-      ...expense,
+      ...safeExpense,
       description: description.trim(),
       amount: parseFloat(amount),
       category,
@@ -161,13 +173,19 @@ export const EditExpenseModal = ({ open, onOpenChange, expense, groups, onSave }
                 <SelectValue placeholder="Select a group" />
               </SelectTrigger>
               <SelectContent>
-                {groups.map((group) => (
-                  <SelectItem key={group.id} value={group.id}>
-                    <div className="flex items-center space-x-2">
-                      <span className="text-sm">{group.name}</span>
-                    </div>
+                {groups && groups.length > 0 ? (
+                  groups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-sm">{group.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="" disabled>
+                    No groups available
                   </SelectItem>
-                ))}
+                )}
               </SelectContent>
             </Select>
           </div>

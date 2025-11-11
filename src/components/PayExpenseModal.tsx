@@ -32,9 +32,11 @@ export const PayExpenseModal = ({
   const [description, setDescription] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const group = groups.find(g => g.id === groupId);
-  const amountOwed = getAmountOwedForExpense(expense.id);
-  const paidByMember = group?.members.find(m => m.id === expense.paidBy);
+  // Add safety checks for expense and group data
+  const group = groups?.find(g => g.id === groupId);
+  const amountOwed = expense?.id ? getAmountOwedForExpense(expense.id) : 0;
+  const paidByMember = group?.members?.find(m => m.id === expense?.paidBy);
+  const splitBetweenCount = expense?.splitBetween ? expense.splitBetween.length : 1;
 
   const handleSubmit = async () => {
     if (!group) {
@@ -60,6 +62,7 @@ export const PayExpenseModal = ({
     }
   };
 
+  // Add safety check for expense and group
   if (!expense || !group) return null;
 
   return (
@@ -83,7 +86,7 @@ export const PayExpenseModal = ({
                     <Avatar className="w-6 h-6">
                       <AvatarImage src={paidByMember?.avatar} />
                       <AvatarFallback className="text-xs">
-                        {paidByMember?.name.charAt(0) || "U"}
+                        {paidByMember?.name?.charAt(0) || "U"}
                       </AvatarFallback>
                     </Avatar>
                     <p className="text-xs text-muted-foreground truncate">
@@ -104,7 +107,7 @@ export const PayExpenseModal = ({
             <div className="relative">
               <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                value={amountOwed.toFixed(2)}
+                value={amountOwed?.toFixed(2) || "0.00"}
                 readOnly
                 className="pl-10 text-base font-semibold py-5 input-field bg-muted"
               />
@@ -119,15 +122,15 @@ export const PayExpenseModal = ({
             <CardContent className="p-3 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Total Expense</span>
-                <span>₹{expense.amount.toFixed(2)}</span>
+                <span>₹{expense.amount?.toFixed(2) || "0.00"}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Split Between</span>
-                <span>{expense.splitBetween.length} people</span>
+                <span>{splitBetweenCount} people</span>
               </div>
               <div className="flex justify-between text-sm font-medium">
                 <span>Your Share</span>
-                <span className="text-primary">₹{amountOwed.toFixed(2)}</span>
+                <span className="text-primary">₹{amountOwed?.toFixed(2) || "0.00"}</span>
               </div>
             </CardContent>
           </Card>
@@ -155,7 +158,7 @@ export const PayExpenseModal = ({
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-lg font-bold text-success">₹{amountOwed.toFixed(2)}</p>
+                  <p className="text-lg font-bold text-success">₹{amountOwed?.toFixed(2) || "0.00"}</p>
                 </div>
               </div>
             </CardContent>
@@ -174,7 +177,7 @@ export const PayExpenseModal = ({
             <Button 
               className="flex-1 py-5 text-sm button-primary" 
               onClick={handleSubmit}
-              disabled={isProcessing || amountOwed <= 0}
+              disabled={isProcessing || (amountOwed || 0) <= 0}
             >
               {isProcessing ? (
                 <>

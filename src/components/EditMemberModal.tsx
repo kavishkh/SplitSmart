@@ -27,8 +27,15 @@ interface EditMemberModalProps {
 }
 
 export const EditMemberModal = ({ open, onOpenChange, member, onSave }: EditMemberModalProps) => {
-  const [name, setName] = useState(member.name);
-  const [email, setEmail] = useState(member.email);
+  // Add safety checks for member object
+  const safeMember = member || {
+    id: "",
+    name: "",
+    email: ""
+  };
+
+  const [name, setName] = useState(safeMember.name || "");
+  const [email, setEmail] = useState(safeMember.email || "");
   const [nameError, setNameError] = useState("");
   const [emailError, setEmailError] = useState("");
 
@@ -69,7 +76,7 @@ export const EditMemberModal = ({ open, onOpenChange, member, onSave }: EditMemb
     }
     
     onSave({
-      id: member.id,
+      id: safeMember.id || "",
       name: name.trim(),
       email: email.trim().toLowerCase(),
     });

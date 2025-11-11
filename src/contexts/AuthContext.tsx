@@ -1,6 +1,5 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { userAPI } from '../services/api.js';
 
 interface User {
   id: string;
@@ -11,8 +10,8 @@ interface User {
 
 interface AuthContextType {
   user: User | null;
-  login: (email: string, password: string) => Promise<boolean>;
-  signup: (name: string, email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; message?: string }>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: boolean; message?: string }>;
   logout: () => void;
   isAuthenticated: boolean;
   isLoading: boolean;
@@ -41,89 +40,81 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true);
     try {
-      // Fetch users from database
-      const users = await userAPI.getAll();
-      console.log('Fetched users:', users);
+      // Call the backend login API
+      const response = await fetch('http://localhost:40001/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
       
-      // Find user by email
-      const user = users.find((u: any) => u.email === email);
-      console.log('Found user:', user);
+      const data = await response.json();
       
-      if (user) {
-        // For demo purposes, we'll accept any non-empty password
-        // In a real app, this would be done securely on the server
-        if (password) {
-          const userData = {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            initials: user.initials || user.name.substring(0, 2).toUpperCase()
-          };
-          
-          setUser(userData);
-          setIsAuthenticated(true);
-          localStorage.setItem("user", JSON.stringify(userData));
-          localStorage.setItem("isAuthenticated", "true");
-          
-          // Increment login count
-          const currentCount = localStorage.getItem("loginCount");
-          const newCount = currentCount ? parseInt(currentCount, 10) + 1 : 1;
-          localStorage.setItem("loginCount", newCount.toString());
-          
-          // Navigate to home page on successful login
-          setTimeout(() => {
-            navigate("/");
-          }, 100);
-          
-          return true;
-        }
+      if (data.success) {
+        const userData = {
+          id: data.user.id,
+          name: data.user.name,
+          email: data.user.email,
+          initials: data.user.initials || data.user.name.substring(0, 2).toUpperCase()
+        };
+        
+        setUser(userData);
+        setIsAuthenticated(true);
+        localStorage.setItem("user", JSON.stringify(userData));
+        localStorage.setItem("isAuthenticated", "true");
+        
+        // Increment login count
+        const currentCount = localStorage.getItem("loginCount");
+        const newCount = currentCount ? parseInt(currentCount, 10) + 1 : 1;
+        localStorage.setItem("loginCount", newCount.toString());
+        
+        // Navigate to home page on successful login
+        setTimeout(() => {
+          navigate("/");
+        }, 100);
+        
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.error || 'Login failed' };
       }
-      
-      // If no user found, return false
-      return false;
     } catch (error) {
       console.error('Login error:', error);
-      return false;
+      return { success: false, message: 'An error occurred during login. Please try again.' };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const signup = async (name: string, email: string, password: string): Promise<boolean> => {
+  const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; message?: string }> => {
     setIsLoading(true);
     try {
-      // Check if user already exists
-      const users = await userAPI.getAll();
-      const existingUser = users.find((u: any) => u.email === email);
-      
-      if (existingUser) {
-        console.error('User already exists with this email');
-        return false;
-      }
-      
-      // Create initials from name
-      const initials = name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-      
-      // Create user in database
-      const newUser = await userAPI.create({
-        id: `user-${Date.now()}`,
-        name,
-        email,
-        password, // In a real app, this should be hashed
-        initials,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+      // Create user through the API
+      const response = await fetch('http://localhost:40001/api/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }),
       });
       
-      if (newUser) {
+      const data = await response.json();
+      
+      if (response.ok && data) {
         const userData = {
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          initials: newUser.initials || initials
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          initials: data.initials || name.substring(0, 2).toUpperCase()
         };
         
         // Authenticate the user
@@ -140,13 +131,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           navigate("/");
         }, 100);
         
-        return true;
+        return { success: true, message: 'Account created successfully!' };
+      } else {
+        return { success: false, message: data.error || 'Failed to create account. Please try again.' };
       }
-      
-      return false;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signup error:', error);
-      return false;
+      if (error.message && error.message.includes('409')) {
+        return { success: false, message: 'User already exists with this email.' };
+      }
+      return { success: false, message: 'An error occurred during signup. Please try again.' };
     } finally {
       setIsLoading(false);
     }

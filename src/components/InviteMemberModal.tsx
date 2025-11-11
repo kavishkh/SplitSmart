@@ -12,21 +12,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useUser } from "@/hooks/use-user";
+import { groupAPI } from "@/services/api.js";
 
 interface InviteMemberModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   groupId: string;
   groupName: string;
+  ownerId: string;
 }
 
-export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName }: InviteMemberModalProps) => {
+export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, ownerId }: InviteMemberModalProps) => {
   const [email, setEmail] = useState("");
   const [isCopied, setIsCopied] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const { currentUser } = useUser();
 
   // Generate invitation link
-  const inviteLink = `${window.location.origin}/groups/${groupId}/join`;
+  const inviteLink = `${window.location.origin}/join-group/${groupId}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(inviteLink).then(() => {
@@ -53,15 +57,21 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName }: In
 
     setIsSending(true);
     try {
-      // In a real implementation, you would send an email here
-      // For now, we'll simulate the process
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      // Send invitation email via API
+      await groupAPI.sendInvitation({
+        to: email,
+        memberName: email.split('@')[0], // Use part before @ as name
+        groupName: groupName,
+        inviterName: currentUser?.name || 'A SplitSmart user',
+        invitationLink: inviteLink
+      });
+
       toast.success(`Invitation sent to ${email}!`);
       setEmail("");
       onOpenChange(false);
-    } catch (error) {
-      toast.error("Failed to send invitation");
+    } catch (error: any) {
+      console.error('Error sending invitation:', error);
+      toast.error(error.message || "Failed to send invitation. Please try again.");
     } finally {
       setIsSending(false);
     }

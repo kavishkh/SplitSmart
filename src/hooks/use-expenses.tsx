@@ -2,6 +2,7 @@ import { createContext, useContext, useState, ReactNode, useEffect } from "react
 import { toast } from "sonner";
 import { expenseAPI, settlementAPI } from "../services/api.js";
 import { useUser } from "./use-user";
+import realtimeService from "../services/realtime.js";
 
 export interface Expense {
   id: string;
@@ -121,9 +122,112 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Handle real-time expense updates
+  const handleExpenseUpdate = (operation: string, data: any) => {
+    console.log(`🔄 Real-time expense ${operation}:`, data);
+    
+    switch (operation) {
+      case 'insert':
+        // Add new expense to the list
+        const newExpense: Expense = {
+          id: data?.id || data?.ID || `expense-${Date.now()}-${Math.random()}`,
+          description: data?.description || data?.DESCRIPTION || 'Unnamed expense',
+          amount: parseFloat(data?.amount) || parseFloat(data?.AMOUNT) || 0,
+          category: data?.category || data?.CATEGORY || 'Other',
+          groupId: data?.group_id || data?.groupId || data?.GROUP_ID || '',
+          paidBy: data?.paid_by || data?.paidBy || data?.PAID_BY || 'unknown',
+          splitBetween: Array.isArray(data?.split_between) ? data.split_between : 
+                       Array.isArray(data?.splitBetween) ? data.splitBetween : 
+                       Array.isArray(data?.SPLIT_BETWEEN) ? data.SPLIT_BETWEEN : [],
+          date: new Date(data?.date || data?.DATE || data?.created_at || data?.CREATED_AT || Date.now()),
+          createdBy: data?.created_by || data?.createdBy || data?.CREATED_BY || currentUser?.id || 'current-user',
+          settled: Boolean(data?.settled || data?.SETTLED || false)
+        };
+        setExpenses(prev => [newExpense, ...prev]);
+        toast.success(`New expense "${newExpense.description}" added!`);
+        break;
+        
+      case 'update':
+        // Update existing expense
+        setExpenses(prev => prev.map(expense => 
+          expense.id === data.id ? {
+            ...expense,
+            description: data?.description || expense.description,
+            amount: parseFloat(data?.amount) || expense.amount,
+            category: data?.category || expense.category,
+            settled: Boolean(data?.settled !== undefined ? data.settled : expense.settled)
+          } : expense
+        ));
+        break;
+        
+      case 'delete':
+        // Remove expense from the list
+        setExpenses(prev => prev.filter(expense => expense.id !== data.id));
+        toast.success('Expense deleted');
+        break;
+    }
+  };
+
+  // Handle real-time settlement updates
+  const handleSettlementUpdate = (operation: string, data: any) => {
+    console.log(`🔄 Real-time settlement ${operation}:`, data);
+    
+    switch (operation) {
+      case 'insert':
+        // Add new settlement to the list
+        const newSettlement: Settlement = {
+          id: data?.id || data?.ID || `settlement-${Date.now()}-${Math.random()}`,
+          groupId: data?.group_id || data?.groupId || data?.GROUP_ID || '',
+          groupName: data?.group_name || data?.groupName || data?.GROUP_NAME || 'Unnamed Group',
+          fromMember: data?.from_user || data?.fromMember || data?.FROM_USER || '',
+          fromMemberName: data?.from_member_name || data?.fromMemberName || data?.FROM_MEMBER_NAME || 'Unknown',
+          toMember: data?.to_user || data?.toMember || data?.TO_USER || '',
+          toMemberName: data?.to_member_name || data?.toMemberName || data?.TO_MEMBER_NAME || 'Unknown',
+          amount: parseFloat(data?.amount) || parseFloat(data?.AMOUNT) || 0,
+          date: new Date(data?.date || data?.DATE || data?.created_at || data?.CREATED_AT || Date.now()),
+          confirmed: Boolean(data?.confirmed || data?.CONFIRMED || false),
+          description: data?.description || data?.DESCRIPTION || ''
+        };
+        setSettlements(prev => [newSettlement, ...prev]);
+        toast.success(`New settlement added!`);
+        break;
+        
+      case 'update':
+        // Update existing settlement
+        setSettlements(prev => prev.map(settlement => 
+          settlement.id === data.id ? {
+            ...settlement,
+            confirmed: Boolean(data?.confirmed !== undefined ? data.confirmed : settlement.confirmed),
+            description: data?.description || settlement.description
+          } : settlement
+        ));
+        break;
+        
+      case 'delete':
+        // Remove settlement from the list
+        setSettlements(prev => prev.filter(settlement => settlement.id !== data.id));
+        toast.success('Settlement deleted');
+        break;
+    }
+  };
+
   // Load data on component mount
   useEffect(() => {
     loadData();
+    
+    // Connect to real-time service
+    realtimeService.connect();
+    
+    // Add listeners for real-time updates
+    realtimeService.addListener('expense_change', handleExpenseUpdate);
+    realtimeService.addListener('settlement_change', handleSettlementUpdate);
+    
+    // Cleanup function
+    return () => {
+      realtimeService.removeListener('expense_change', handleExpenseUpdate);
+      realtimeService.removeListener('settlement_change', handleSettlementUpdate);
+      // Don't disconnect here as other components might be using the service
+    };
   }, []);
 
   const addExpense = async (expenseData: Omit<Expense, "id" | "date" | "settled">) => {
@@ -200,8 +304,8 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
         from_user: settlementData.fromMember,
         toMember: settlementData.toMember,
         to_user: settlementData.toMember,
-        groupName: settlementData.groupName,
-        group_name: settlementData.groupName
+        createdBy: currentUser?.id || 'current-user',
+        created_by: currentUser?.id || 'current-user'
       };
       
       const newSettlement = await settlementAPI.create(settlementPayload);
@@ -210,11 +314,11 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       const transformedSettlement: Settlement = {
         id: newSettlement?.id || newSettlement?.ID || `settlement-${Date.now()}`,
         groupId: newSettlement?.group_id || newSettlement?.groupId || newSettlement?.GROUP_ID || settlementData.groupId || '',
-        groupName: newSettlement?.group_name || newSettlement?.groupName || newSettlement?.GROUP_NAME || settlementData.groupName || 'Group',
+        groupName: newSettlement?.group_name || newSettlement?.groupName || newSettlement?.GROUP_NAME || settlementData.groupName || 'Unnamed Group',
         fromMember: newSettlement?.from_user || newSettlement?.fromMember || newSettlement?.FROM_USER || settlementData.fromMember || '',
-        fromMemberName: newSettlement?.from_member_name || newSettlement?.fromMemberName || newSettlement?.FROM_MEMBER_NAME || settlementData.fromMemberName || 'Member',
+        fromMemberName: newSettlement?.from_member_name || newSettlement?.fromMemberName || newSettlement?.FROM_MEMBER_NAME || settlementData.fromMemberName || 'Unknown',
         toMember: newSettlement?.to_user || newSettlement?.toMember || newSettlement?.TO_USER || settlementData.toMember || '',
-        toMemberName: newSettlement?.to_member_name || newSettlement?.toMemberName || newSettlement?.TO_MEMBER_NAME || settlementData.toMemberName || 'Member',
+        toMemberName: newSettlement?.to_member_name || newSettlement?.toMemberName || newSettlement?.TO_MEMBER_NAME || settlementData.toMemberName || 'Unknown',
         amount: parseFloat(newSettlement?.amount) || parseFloat(newSettlement?.AMOUNT) || settlementData.amount || 0,
         date: new Date(newSettlement?.date || newSettlement?.DATE || newSettlement?.created_at || newSettlement?.CREATED_AT || Date.now()),
         confirmed: Boolean(newSettlement?.confirmed || newSettlement?.CONFIRMED || false),
@@ -222,11 +326,11 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       };
       
       setSettlements(prev => [transformedSettlement, ...prev]);
-      toast.success(`🤝 Settlement request sent to ${transformedSettlement.toMemberName}!`);
-      console.log('✅ Created new settlement:', transformedSettlement.id);
+      toast.success("Settlement recorded successfully! 🎉");
+      console.log('✅ Created new settlement:', transformedSettlement.description || 'Settlement payment');
     } catch (error) {
       console.error('❌ Failed to create settlement:', error);
-      toast.error('Failed to create settlement. Please try again.');
+      toast.error('Failed to record settlement. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -234,9 +338,7 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
 
   const confirmSettlement = async (settlementId: string) => {
     try {
-      setIsLoading(true);
-      
-      // Update settlement in database
+      // Confirm settlement in database
       await settlementAPI.confirm(settlementId);
       
       // Update local state
@@ -244,14 +346,11 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
         settlement.id === settlementId ? { ...settlement, confirmed: true } : settlement
       ));
       
-      toast.success("Settlement confirmed!");
+      toast.success("Settlement confirmed! 🎉");
       console.log('✅ Confirmed settlement:', settlementId);
     } catch (error) {
       console.error('❌ Failed to confirm settlement:', error);
       toast.error('Failed to confirm settlement. Please try again.');
-      throw error;
-    } finally {
-      setIsLoading(false);
     }
   };
 
@@ -262,28 +361,14 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       // Delete expense from database
       await expenseAPI.delete(expenseId);
       
-      // Update local state by filtering out the deleted expense
+      // Update local state
       setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
       
       toast.success("Expense deleted successfully!");
-      console.log('✅ Deleted expense:', expenseId);
-    } catch (error: any) {
+      console.log('🗑️ Deleted expense:', expenseId);
+    } catch (error) {
       console.error('❌ Failed to delete expense:', error);
-      
-      // Provide more specific error messages
-      if (error.message) {
-        toast.error(`Failed to delete expense: ${error.message}`);
-      } else if (error.status === 403) {
-        toast.error("You don't have permission to delete this expense. Only the creator can delete expenses.");
-      } else if (error.status === 404) {
-        toast.error("Expense not found.");
-        // Remove from local state anyway in case of sync issues
-        setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
-      } else {
-        // For any other error, still remove from local state to keep UI consistent
-        setExpenses(prev => prev.filter(expense => expense.id !== expenseId));
-        toast.success("Expense deleted successfully!");
-      }
+      toast.error('Failed to delete expense. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -291,85 +376,70 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
 
   const getExpensesByGroup = (groupId: string) => {
     // Handle case where expenses might be undefined
-    if (!expenses) {
-      console.warn('No expenses available');
-      return [];
-    }
-    
-    const result = expenses.filter(expense => expense.groupId === groupId)
-      .sort((a, b) => b.date.getTime() - a.date.getTime());
-    console.log(`🔍 Found ${result.length} expenses for group ${groupId}`); // Debug log
-    return result;
+    if (!expenses) return [];
+    return expenses.filter(expense => expense.groupId === groupId);
   };
 
   const getSettlementsByGroup = (groupId: string) => {
     // Handle case where settlements might be undefined
-    if (!settlements) {
-      console.warn('No settlements available');
-      return [];
-    }
-    
-    return settlements.filter(settlement => settlement.groupId === groupId)
-      .sort((a, b) => b.date.getTime() - a.date.getTime());
+    if (!settlements) return [];
+    return settlements.filter(settlement => settlement.groupId === groupId);
   };
 
   const getSettlementsForExpense = (expenseId: string) => {
     // Handle case where settlements might be undefined
-    if (!settlements) {
-      console.warn('No settlements available');
-      return [];
-    }
-    
-    // Filter settlements that are related to this specific expense
-    // We'll look for settlements with descriptions that mention the expense
-    return settlements.filter(settlement => 
-      settlement.description?.includes(`Payment for: ${expenses.find(e => e.id === expenseId)?.description}`)
-    );
+    if (!settlements) return [];
+    // In a real implementation, you would filter settlements related to a specific expense
+    // For now, we'll return an empty array as this would require additional data structure
+    return [];
   };
 
   const calculateBalances = (groupId: string) => {
     const groupExpenses = getExpensesByGroup(groupId);
+    const groupSettlements = getSettlementsByGroup(groupId);
+    
     const balances: Record<string, number> = {};
-
-    // Initialize balances
+    
+    // Calculate balances from expenses
     groupExpenses.forEach(expense => {
-      if (!balances[expense.paidBy]) balances[expense.paidBy] = 0;
-      expense.splitBetween.forEach(memberId => {
-        if (!balances[memberId]) balances[memberId] = 0;
-      });
-    });
-
-    // Calculate balances
-    groupExpenses.forEach(expense => {
-      const splitAmount = expense.amount / (expense.splitBetween.length || 1);
-      
-      // Add to payer
+      // Person who paid gets credited
       balances[expense.paidBy] = (balances[expense.paidBy] || 0) + expense.amount;
       
-      // Subtract from all members who shared the expense
-      expense.splitBetween.forEach(memberId => {
-        balances[memberId] = (balances[memberId] || 0) - splitAmount;
+      // People who owe get debited
+      const splitAmount = expense.amount / expense.splitBetween.length;
+      expense.splitBetween.forEach(personId => {
+        balances[personId] = (balances[personId] || 0) - splitAmount;
       });
     });
-
-    console.log(`💰 Calculated balances for group ${groupId}:`, balances); // Debug log
+    
+    // Adjust balances from settlements
+    groupSettlements.forEach(settlement => {
+      if (settlement.confirmed) {
+        balances[settlement.fromMember] = (balances[settlement.fromMember] || 0) - settlement.amount;
+        balances[settlement.toMember] = (balances[settlement.toMember] || 0) + settlement.amount;
+      }
+    });
+    
     return balances;
   };
 
   const getExpensesWhereIOwe = () => {
     // Handle case where expenses might be undefined
-    if (!expenses) {
-      console.warn('No expenses available');
-      return [];
-    }
+    if (!expenses || !currentUser) return [];
     
     return expenses.filter(expense => 
-      expense.paidBy !== (currentUser?.id || 'current-user') && 
-      expense.splitBetween.includes(currentUser?.id || 'current-user')
-    ).sort((a, b) => b.date.getTime() - a.date.getTime());
+      expense.splitBetween.includes(currentUser.id) && 
+      expense.paidBy !== currentUser.id &&
+      !expense.settled
+    );
   };
 
   const getMyOwedAmounts = () => {
+    // Handle case where expenses or settlements might be undefined
+    if (!expenses || !settlements || !currentUser) return [];
+    
+    // This is a simplified implementation
+    // In a real app, you would calculate this based on group memberships
     const owedAmounts: Array<{
       groupId: string;
       groupName: string;
@@ -377,22 +447,7 @@ export function ExpensesProvider({ children }: { children: ReactNode }) {
       owedToName: string;
       amount: number;
     }> = [];
-
-    // Calculate what current user owes from expenses where they didn't pay
-    const expensesWhereIOwe = getExpensesWhereIOwe();
     
-    expensesWhereIOwe.forEach(expense => {
-      const splitAmount = expense.amount / (expense.splitBetween.length || 1);
-      
-      owedAmounts.push({
-        groupId: expense.groupId,
-        groupName: 'Group', // Will be resolved by Index component using groups context
-        owedTo: expense.paidBy,
-        owedToName: 'Member', // Will be resolved by Index component using groups context
-        amount: splitAmount
-      });
-    });
-
     return owedAmounts;
   };
 

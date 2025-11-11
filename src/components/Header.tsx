@@ -23,6 +23,13 @@ export const Header = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [timeOfDay, setTimeOfDay] = useState("");
   
+  // Add safety check for currentUser
+  const safeCurrentUser = currentUser || {
+    name: "User",
+    initials: "U",
+    email: ""
+  };
+  
   const myOwedAmounts = getMyOwedAmounts();
   const hasNotifications = myOwedAmounts.length > 0;
   const totalOwed = myOwedAmounts.reduce((sum, debt) => sum + (debt.amount || 0), 0);
@@ -125,11 +132,11 @@ export const Header = () => {
                   <Avatar className="w-9 h-9 ring-2 ring-primary/20 hover:ring-primary/50 transition-all duration-300 cursor-pointer hover:scale-110 animate-fade-in-scale">
                     <AvatarImage src="" />
                     <AvatarFallback className="bg-gradient-accent text-accent-foreground font-semibold">
-                      {currentUser.initials}
+                      {safeCurrentUser.initials || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="hidden md:block text-left">
-                    <p className="text-sm font-medium">{currentUser.name}</p>
+                    <p className="text-sm font-medium">{safeCurrentUser.name || "User"}</p>
                     <p className="text-xs text-muted-foreground">Good {timeOfDay}</p>
                   </div>
                 </div>

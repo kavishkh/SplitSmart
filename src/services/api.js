@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'http://localhost:40001/api';
 
 // Generic API call function with better error handling
 const apiCall = async (endpoint, options = {}) => {
@@ -60,6 +60,11 @@ export const groupAPI = {
   }),
   delete: (id) => apiCall(`/groups/${id}`, {
     method: 'DELETE',
+  }),
+  // Add function for sending invitation emails
+  sendInvitation: (invitationData) => apiCall('/send-invitation-email', {
+    method: 'POST',
+    body: JSON.stringify(invitationData),
   }),
 };
 

@@ -12,7 +12,7 @@ interface User {
 }
 
 interface UserContextType {
-  currentUser: User;
+  currentUser: User | null;
   updateUser: (userData: Partial<User>) => Promise<void>;
   signOut: () => void;
   isLoading: boolean;
@@ -22,7 +22,7 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const { user: authUser, logout } = useAuth();
-  const [currentUser, setCurrentUser] = useState<User>({
+  const [currentUser, setCurrentUser] = useState<User | null>({
     id: "user-tusha",
     name: "tusha",
     email: "tusha@splitsmart.com",
@@ -89,7 +89,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const updateUser = async (userData: Partial<User>) => {
     try {
-      setCurrentUser(prev => ({ ...prev, ...userData }));
+      setCurrentUser(prev => prev ? { ...prev, ...userData } : null);
       console.log('✅ Updated user data:', userData);
     } catch (error) {
       console.error('❌ Failed to update user:', error);

@@ -19,6 +19,16 @@ const Index = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [loginCount, setLoginCount] = useState(0);
   
+  // Add safety check for currentUser
+  const safeCurrentUser = currentUser || {
+    id: "user-tusha",
+    name: "tusha",
+    email: "tusha@splitsmart.com",
+    initials: "TU",
+    memberSince: new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    avatar: ""
+  };
+  
   // Track login count
   useEffect(() => {
     const count = localStorage.getItem("loginCount");
@@ -150,7 +160,7 @@ const Index = () => {
         {loginCount > 1 && (
           <section className="text-center animate-slide-up">
             <div className="flex items-center justify-center gap-4 mb-4">
-              <h1 className="text-4xl font-bold text-foreground">Welcome back, {currentUser.name}! 👋</h1>
+              <h1 className="text-4xl font-bold text-foreground">Welcome back, {safeCurrentUser.name}! 👋</h1>
               <Button 
                 variant="ghost" 
                 size="sm" 

@@ -3,711 +3,407 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { supabase } from './config/supabase.js';
+import { connectDatabase, getDatabase, createChangeStream, isDatabaseAvailable, closeDatabase } from './config/database.js';
+import http from 'http';
+import { Server } from 'socket.io';
+import nodemailer from 'nodemailer';
+import bcrypt from 'bcryptjs';
+// Import email service functions
+import { sendGroupInvitationEmail } from './services/emailService.js';
 
 // Get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables from .env file
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Fix the path to correctly point to the .env file in the project root
+const envPath = path.resolve(__dirname, '../.env');
+console.log('Loading environment variables from:', envPath);
+dotenv.config({ path: envPath });
+
+// Log environment variables for debugging
+console.log('EMAIL_USER from env:', process.env.EMAIL_USER);
+console.log('EMAIL_PASS from env:', process.env.EMAIL_PASS ? '*** (set)' : 'not set');
+console.log('MONGODB_URI from env:', process.env.MONGODB_URI ? '*** (set)' : 'not set');
+console.log('PORT from env:', process.env.PORT || 'using default');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 40001;
+
+// Create HTTP server and Socket.IO server for real-time functionality
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// In-memory data store for demo mode
-let users = [];
-let groups = [];
-let expenses = [];
-let settlements = [];
+// Store connected clients for real-time updates
+let connectedClients = new Set();
 
-// Database connection status
-let isDatabaseConnected = false;
-let dbClient = null;
-
-// Connect to database
-(async () => {
+// Create Nodemailer transporter
+const createTransporter = () => {
   try {
-    console.log('Attempting to connect to Supabase...');
-    
-    // Test the connection by checking if we can access the Supabase project
-    const { data, error } = await supabase
-      .from('users')
-      .select('count')
-      .limit(1);
-    
-    // We don't care about the actual result, just that we can connect
-    console.log('✅ Supabase Connected');
-    console.log('✅ Using Supabase for data storage');
-    isDatabaseConnected = true;
-    dbClient = supabase;
+    // Check if we have email configuration
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+      console.warn('⚠️  Email credentials not found. Email service will not work.');
+      return null;
+    }
+
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST || 'smtp.gmail.com',
+      port: parseInt(process.env.SMTP_PORT) || 587,
+      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+      }
+    });
+
+    return transporter;
   } catch (error) {
-    console.error('Failed to connect to Supabase:', error);
-    console.log('⚠️ Supabase connection failed. Application will run in demo mode with limited functionality.');
-    console.log('⚠️ Data will not be persisted between sessions.');
+    console.error('❌ Failed to create email transporter:', error);
+    return null;
   }
-})();
+};
 
-// Simple ID generator
-const generateId = () => Math.random().toString(36).substr(2, 9);
+const transporter = createTransporter();
 
-// Health check endpoint
+// Database connection with retry logic
+let db;
+let connectionRetryCount = 0;
+const MAX_RETRY_ATTEMPTS = 5;
+
+const initializeDatabase = async () => {
+  try {
+    console.log('🔄 Initializing database connection...');
+    const database = await connectDatabase();
+    if (database) {
+      db = database;
+      console.log('✅ Database connected successfully');
+      connectionRetryCount = 0; // Reset retry count on success
+      
+      // Set up change streams for real-time updates
+      // createChangeStream('users', (change) => {
+      //   console.log('User change detected:', change);
+      //   // Broadcast to connected clients
+      //   connectedClients.forEach(clientId => {
+      //     io.to(clientId).emit('userUpdate', change);
+      //   });
+      // });
+      
+      // createChangeStream('groups', (change) => {
+      //   console.log('Group change detected:', change);
+      //   // Broadcast to connected clients
+      //   connectedClients.forEach(clientId => {
+      //     io.to(clientId).emit('groupUpdate', change);
+      //   });
+      // });
+    } else {
+      console.error('❌ Failed to connect to database');
+      
+      // Increment retry count and schedule retry if under limit
+      connectionRetryCount++;
+      if (connectionRetryCount <= MAX_RETRY_ATTEMPTS) {
+        console.log(`🔄 Retry attempt ${connectionRetryCount}/${MAX_RETRY_ATTEMPTS} in 5 seconds...`);
+        setTimeout(initializeDatabase, 5000);
+      } else {
+        console.error('⚠️  Maximum retry attempts reached. Application will start without database connectivity');
+        console.error('⚠️  Please check your MongoDB credentials and connection');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+    
+    // Increment retry count and schedule retry if under limit
+    connectionRetryCount++;
+    if (connectionRetryCount <= MAX_RETRY_ATTEMPTS) {
+      console.log(`🔄 Retry attempt ${connectionRetryCount}/${MAX_RETRY_ATTEMPTS} in 5 seconds...`);
+      setTimeout(initializeDatabase, 5000);
+    } else {
+      console.error('⚠️  Maximum retry attempts reached. Application will start without database connectivity');
+      console.error('⚠️  Please check your MongoDB credentials and connection');
+    }
+  }
+};
+
+// Initialize database connection
+initializeDatabase();
+
+// Update API routes to handle database unavailability more gracefully
+
+// Add a health check endpoint that shows database status
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
-    timestamp: new Date(),
-    databaseConnected: isDatabaseConnected,
-    message: isDatabaseConnected 
-      ? 'SplitSmart backend is running with Supabase' 
-      : 'SplitSmart backend is running in demo mode (no database persistence)'
+    timestamp: new Date().toISOString(),
+    databaseConnected: isDatabaseAvailable(),
+    uptime: process.uptime()
   });
 });
 
 // User routes
 app.get('/api/users', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Return in-memory users for demo mode
-    return res.json(users);
-  }
-  
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*');
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'The application is running but database connectivity is unavailable. Please contact the administrator.'
+      });
+    }
     
-    if (error) throw error;
-    res.json(data);
+    const usersCollection = db.collection('users');
+    const users = await usersCollection.find({}).toArray();
+    res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
+    res.status(500).json({ 
+      error: 'Failed to fetch users',
+      message: 'An error occurred while fetching users. Please try again later.'
+    });
   }
 });
 
+// POST route for creating users (signup)
 app.post('/api/users', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Create user in in-memory store for demo mode
-    const user = { id: generateId(), ...req.body, createdAt: new Date(), updatedAt: new Date() };
-    users.push(user);
-    return res.status(201).json(user);
-  }
-  
   try {
-    // Ensure the user has an ID
-    const userData = {
-      id: req.body.id || generateId(),
-      name: req.body.name,
-      email: req.body.email,
-      password: req.body.password,
-      initials: req.body.initials || req.body.name.substring(0, 2).toUpperCase(),
-      created_at: new Date(),
-      updated_at: new Date()
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'User registration is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const userData = req.body;
+    
+    // Validate required fields
+    if (!userData.name || !userData.email || !userData.password) {
+      return res.status(400).json({ error: 'Name, email, and password are required' });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userData.email)) {
+      return res.status(400).json({ error: 'Invalid email address format' });
+    }
+    
+    const usersCollection = db.collection('users');
+    
+    // Check if user already exists
+    const existingUser = await usersCollection.findOne({ email: userData.email });
+    if (existingUser) {
+      return res.status(409).json({ error: 'User already exists with this email' });
+    }
+    
+    // Hash the password
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(userData.password, saltRounds);
+    
+    // Create initials from name
+    const initials = userData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    
+    // Add timestamps
+    const newUser = {
+      ...userData,
+      password: hashedPassword, // Store hashed password
+      id: userData.id || `user-${Date.now()}`,
+      initials: userData.initials || initials,
+      createdAt: userData.createdAt || new Date().toISOString(),
+      updatedAt: userData.updatedAt || new Date().toISOString()
     };
     
-    const { data, error } = await supabase
-      .from('users')
-      .insert([userData])
-      .select();
+    // Insert user into database
+    const result = await usersCollection.insertOne(newUser);
     
-    if (error) throw error;
-    res.status(201).json(data[0]);
+    if (result.insertedId) {
+      // Return the created user (excluding password for security)
+      const { password, ...userWithoutPassword } = newUser;
+      res.status(201).json(userWithoutPassword);
+    } else {
+      res.status(500).json({ error: 'Failed to create user' });
+    }
   } catch (error) {
     console.error('Error creating user:', error);
     res.status(500).json({ error: 'Failed to create user' });
   }
 });
 
-app.get('/api/users/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Find user in in-memory store for demo mode
-    const user = users.find(u => u.id === req.params.id);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    return res.json(user);
-  }
-  
+// POST route for user login
+app.post('/api/login', async (req, res) => {
   try {
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-    
-    if (error) throw error;
-    if (!data) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Login is temporarily unavailable due to database connectivity issues.'
+      });
     }
-    res.json(data);
+    
+    const { email, password } = req.body;
+    
+    // Validate required fields
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required' });
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email address format' });
+    }
+    
+    const usersCollection = db.collection('users');
+    
+    // Find user by email
+    const user = await usersCollection.findOne({ email });
+    
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+    
+    // Compare the provided password with the hashed password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (isPasswordValid) {
+      // Return the user (excluding password for security)
+      const { password: userPassword, ...userWithoutPassword } = user;
+      res.json({ 
+        success: true, 
+        user: userWithoutPassword,
+        message: 'Login successful'
+      });
+    } else {
+      res.status(401).json({ error: 'Invalid email or password' });
+    }
   } catch (error) {
-    console.error('Error fetching user:', error);
-    res.status(500).json({ error: 'Failed to fetch user' });
+    console.error('Error during login:', error);
+    res.status(500).json({ error: 'Failed to login' });
   }
 });
 
 // Group routes
 app.get('/api/groups', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Return in-memory groups for demo mode
-    return res.json(groups);
-  }
-  
   try {
-    const { data, error } = await supabase
-      .from('groups')
-      .select('*');
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Groups data is temporarily unavailable due to database connectivity issues.'
+      });
+    }
     
-    if (error) throw error;
-    res.json(data);
+    const groupsCollection = db.collection('groups');
+    const groups = await groupsCollection.find({}).toArray();
+    res.json(groups);
   } catch (error) {
     console.error('Error fetching groups:', error);
     res.status(500).json({ error: 'Failed to fetch groups' });
   }
 });
 
+// POST route for creating groups
 app.post('/api/groups', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Create group in in-memory store for demo mode
-    const group = { id: generateId(), ...req.body, createdAt: new Date(), updatedAt: new Date() };
-    groups.push(group);
-    return res.status(201).json(group);
-  }
-  
   try {
-    // Ensure the group has an ID
-    const groupData = {
-      id: req.body.id || generateId(),
-      name: req.body.name,
-      description: req.body.description,
-      members: req.body.members || [],
-      created_by: req.body.createdBy || req.body.created_by,
-      created_at: new Date(),
-      updated_at: new Date()
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Group creation is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const groupData = req.body;
+    
+    // Validate required fields
+    if (!groupData.name) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+    
+    const groupsCollection = db.collection('groups');
+    
+    // Add timestamps and default values
+    const newGroup = {
+      ...groupData,
+      id: groupData.id || `group-${Date.now()}`,
+      createdAt: groupData.createdAt || new Date().toISOString(),
+      updatedAt: groupData.updatedAt || new Date().toISOString(),
+      totalAmount: groupData.totalAmount || 0,
+      yourBalance: groupData.yourBalance || 0,
+      lastActivity: groupData.lastActivity || new Date().toISOString()
     };
     
-    const { data, error } = await supabase
-      .from('groups')
-      .insert([groupData])
-      .select();
+    // Insert group into database
+    const result = await groupsCollection.insertOne(newGroup);
     
-    if (error) throw error;
-    res.status(201).json(data[0]);
+    if (result.insertedId) {
+      // Send invitation emails to all members except the creator
+      if (transporter && Array.isArray(newGroup.members) && newGroup.members.length > 1) {
+        console.log('📧 Sending invitation emails to group members...');
+        
+        // Find the creator (usually the first member or the one with ownerId)
+        const creator = newGroup.members.find(member => member.id === newGroup.createdBy) || newGroup.members[0];
+        const creatorName = creator ? creator.name : 'A SplitSmart user';
+        
+        // Send invitations to all members except the creator
+        const invitationPromises = newGroup.members
+          .filter(member => member.id !== newGroup.createdBy)
+          .map(async (member) => {
+            try {
+              const invitationLink = `http://localhost:8081/accept-invitation?group=${encodeURIComponent(newGroup.name)}&email=${encodeURIComponent(member.email)}`;
+              
+              const emailResult = await sendGroupInvitationEmail({
+                to: member.email,
+                memberName: member.name,
+                groupName: newGroup.name,
+                inviterName: creatorName,
+                invitationLink: invitationLink
+              });
+              
+              if (emailResult.success) {
+                console.log(`✅ Invitation email sent to ${member.email}`);
+              } else {
+                console.error(`❌ Failed to send invitation to ${member.email}:`, emailResult.error);
+              }
+              
+              return emailResult;
+            } catch (emailError) {
+              console.error(`❌ Error sending invitation to ${member.email}:`, emailError);
+              return { success: false, error: emailError.message };
+            }
+          });
+        
+        // Wait for all emails to be sent
+        Promise.all(invitationPromises)
+          .then(results => {
+            const successful = results.filter(r => r.success).length;
+            const failed = results.filter(r => !r.success).length;
+            console.log(`📧 Group invitation emails summary: ${successful} sent successfully, ${failed} failed`);
+          })
+          .catch(error => {
+            console.error('❌ Error in batch sending invitations:', error);
+          });
+      }
+      
+      res.status(201).json(newGroup);
+    } else {
+      res.status(500).json({ error: 'Failed to create group' });
+    }
   } catch (error) {
     console.error('Error creating group:', error);
     res.status(500).json({ error: 'Failed to create group' });
   }
 });
 
-app.get('/api/groups/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Find group in in-memory store for demo mode
-    const group = groups.find(g => g.id === req.params.id);
-    if (!group) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-    return res.json(group);
-  }
-  
-  try {
-    const { data, error } = await supabase
-      .from('groups')
-      .select('*')
-      .eq('id', req.params.id)
-      .single();
-    
-    if (error) throw error;
-    if (!data) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching group:', error);
-    res.status(500).json({ error: 'Failed to fetch group' });
-  }
-});
-
-app.put('/api/groups/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Update group in in-memory store for demo mode
-    const groupIndex = groups.findIndex(g => g.id === req.params.id);
-    if (groupIndex === -1) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-    groups[groupIndex] = { ...groups[groupIndex], ...req.body, updatedAt: new Date() };
-    return res.json(groups[groupIndex]);
-  }
-  
-  try {
-    const groupData = {
-      name: req.body.name,
-      description: req.body.description,
-      members: req.body.members || [],
-      created_by: req.body.createdBy || req.body.created_by,
-      updated_at: new Date()
-    };
-    
-    const { data, error } = await supabase
-      .from('groups')
-      .update(groupData)
-      .eq('id', req.params.id)
-      .select();
-    
-    if (error) throw error;
-    if (data.length === 0) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-    res.json(data[0]);
-  } catch (error) {
-    console.error('Error updating group:', error);
-    res.status(500).json({ error: 'Failed to update group' });
-  }
-});
-
-app.delete('/api/groups/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Delete group from in-memory store for demo mode
-    const groupIndex = groups.findIndex(g => g.id === req.params.id);
-    if (groupIndex === -1) {
-      return res.status(404).json({ error: 'Group not found' });
-    }
-    groups.splice(groupIndex, 1);
-    return res.status(204).send();
-  }
-  
-  try {
-    const { error } = await supabase
-      .from('groups')
-      .delete()
-      .eq('id', req.params.id);
-    
-    if (error) throw error;
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting group:', error);
-    res.status(500).send();
-  }
-});
-
-// Expense routes
-app.get('/api/expenses', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Return in-memory expenses for demo mode
-    return res.json(expenses);
-  }
-  
-  try {
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*');
-    
-    if (error) throw error;
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching expenses:', error);
-    res.status(500).json({ error: 'Failed to fetch expenses' });
-  }
-});
-
-app.post('/api/expenses', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Create expense in in-memory store for demo mode
-    const expense = { id: generateId(), ...req.body, createdAt: new Date(), updatedAt: new Date() };
-    expenses.push(expense);
-    return res.status(201).json(expense);
-  }
-  
-  try {
-    // Ensure the expense has an ID and handle both naming conventions
-    const expenseData = {
-      id: req.body.id || req.body.ID || generateId(),
-      group_id: req.body.groupId || req.body.group_id || req.body.GROUP_ID,
-      description: req.body.description || req.body.DESCRIPTION,
-      amount: req.body.amount || req.body.AMOUNT,
-      paid_by: req.body.paidBy || req.body.paid_by || req.body.PAID_BY,
-      split_between: req.body.splitBetween || req.body.split_between || req.body.SPLIT_BETWEEN || [],
-      date: req.body.date || req.body.DATE || new Date(),
-      created_by: req.body.createdBy || req.body.created_by || req.body.CREATED_BY,
-      created_at: new Date(),
-      updated_at: new Date()
-    };
-    
-    // Ensure all required fields are present
-    if (!expenseData.description || !expenseData.amount || !expenseData.group_id) {
-      return res.status(400).json({ error: 'Missing required fields: description, amount, and group_id are required' });
-    }
-    
-    // Ensure amount is a number
-    expenseData.amount = parseFloat(expenseData.amount);
-    if (isNaN(expenseData.amount)) {
-      return res.status(400).json({ error: 'Amount must be a valid number' });
-    }
-    
-    const { data, error } = await supabase
-      .from('expenses')
-      .insert([expenseData])
-      .select();
-    
-    if (error) throw error;
-    res.status(201).json(data[0]);
-  } catch (error) {
-    console.error('Error creating expense:', error);
-    res.status(500).json({ error: 'Failed to create expense' });
-  }
-});
-
-app.get('/api/expenses/group/:groupId', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Find expenses for group in in-memory store for demo mode
-    const groupExpenses = expenses.filter(e => e.groupId === req.params.groupId || e.group_id === req.params.groupId);
-    return res.json(groupExpenses);
-  }
-  
-  try {
-    const { data, error } = await supabase
-      .from('expenses')
-      .select('*')
-      .eq('group_id', req.params.groupId);
-    
-    if (error) throw error;
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching group expenses:', error);
-    res.status(500).json({ error: 'Failed to fetch group expenses' });
-  }
-});
-
-app.put('/api/expenses/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Update expense in in-memory store for demo mode
-    const expenseIndex = expenses.findIndex(e => e.id === req.params.id);
-    if (expenseIndex === -1) {
-      return res.status(404).json({ error: 'Expense not found' });
-    }
-    expenses[expenseIndex] = { ...expenses[expenseIndex], ...req.body, updatedAt: new Date() };
-    return res.json(expenses[expenseIndex]);
-  }
-  
-  try {
-    const expenseData = {
-      description: req.body.description || req.body.DESCRIPTION,
-      amount: req.body.amount || req.body.AMOUNT,
-      group_id: req.body.groupId || req.body.group_id || req.body.GROUP_ID,
-      paid_by: req.body.paidBy || req.body.paid_by || req.body.PAID_BY,
-      split_between: req.body.splitBetween || req.body.split_between || req.body.SPLIT_BETWEEN || [],
-      date: req.body.date || req.body.DATE,
-      updated_at: new Date()
-    };
-    
-    // Ensure amount is a number if provided
-    if (expenseData.amount !== undefined) {
-      expenseData.amount = parseFloat(expenseData.amount);
-      if (isNaN(expenseData.amount)) {
-        return res.status(400).json({ error: 'Amount must be a valid number' });
-      }
-    }
-    
-    const { data, error } = await supabase
-      .from('expenses')
-      .update(expenseData)
-      .eq('id', req.params.id)
-      .select();
-    
-    if (error) throw error;
-    if (data.length === 0) {
-      return res.status(404).json({ error: 'Expense not found' });
-    }
-    res.json(data[0]);
-  } catch (error) {
-    console.error('Error updating expense:', error);
-    res.status(500).json({ error: 'Failed to update expense' });
-  }
-});
-
-app.delete('/api/expenses/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Delete expense from in-memory store for demo mode
-    const expenseIndex = expenses.findIndex(e => e.id === req.params.id);
-    if (expenseIndex === -1) {
-      return res.status(404).json({ error: 'Expense not found' });
-    }
-    expenses.splice(expenseIndex, 1);
-    return res.status(204).send();
-  }
-  
-  try {
-    // Bypass RLS by using service role key for deletion
-    // This allows any authenticated user to delete expenses for demo purposes
-    const { error } = await supabase
-      .from('expenses')
-      .delete()
-      .eq('id', req.params.id);
-    
-    if (error) {
-      console.error('Error deleting expense:', error);
-      // If RLS prevents deletion, try a different approach
-      if (error.code === '42501') { // insufficient_privilege
-        return res.status(403).json({ 
-          error: 'Permission denied', 
-          message: 'You do not have permission to delete this expense. Only the creator can delete expenses.' 
-        });
-      }
-      throw error;
-    }
-    
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting expense:', error);
-    res.status(500).json({ error: 'Failed to delete expense. Please try again.' });
-  }
-});
-
-// Settlement routes
-app.get('/api/settlements', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Return in-memory settlements for demo mode
-    return res.json(settlements);
-  }
-  
-  try {
-    const { data, error } = await supabase
-      .from('settlements')
-      .select('*');
-    
-    if (error) throw error;
-    res.json(data);
-  } catch (error) {
-    console.error('Error fetching settlements:', error);
-    res.status(500).json({ error: 'Failed to fetch settlements' });
-  }
-});
-
-app.post('/api/settlements', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Create settlement in in-memory store for demo mode
-    const settlement = { id: generateId(), ...req.body, createdAt: new Date(), updatedAt: new Date() };
-    settlements.push(settlement);
-    return res.status(201).json(settlement);
-  }
-  
-  try {
-    // Ensure the settlement has an ID and handle both naming conventions
-    const settlementData = {
-      id: req.body.id || req.body.ID || generateId(),
-      group_id: req.body.groupId || req.body.group_id || req.body.GROUP_ID,
-      from_user: req.body.fromUser || req.body.from_user || req.body.from || req.body.FROM_USER,
-      to_user: req.body.toUser || req.body.to_user || req.body.to || req.body.TO_USER,
-      amount: req.body.amount || req.body.AMOUNT,
-      description: req.body.description || req.body.DESCRIPTION,
-      confirmed: req.body.confirmed || req.body.CONFIRMED || false,
-      date: req.body.date || req.body.DATE || new Date(),
-      created_at: new Date(),
-      updated_at: new Date()
-    };
-    
-    // Ensure all required fields are present
-    if (!settlementData.amount || !settlementData.group_id || !settlementData.from_user || !settlementData.to_user) {
-      return res.status(400).json({ error: 'Missing required fields: amount, group_id, from_user, and to_user are required' });
-    }
-    
-    // Ensure amount is a number
-    settlementData.amount = parseFloat(settlementData.amount);
-    if (isNaN(settlementData.amount)) {
-      return res.status(400).json({ error: 'Amount must be a valid number' });
-    }
-    
-    const { data, error } = await supabase
-      .from('settlements')
-      .insert([settlementData])
-      .select();
-    
-    if (error) throw error;
-    res.status(201).json(data[0]);
-  } catch (error) {
-    console.error('Error creating settlement:', error);
-    res.status(500).json({ error: 'Failed to create settlement' });
-  }
-});
-
-app.patch('/api/settlements/:id/confirm', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Confirm settlement in in-memory store for demo mode
-    const settlementIndex = settlements.findIndex(s => s.id === req.params.id);
-    if (settlementIndex === -1) {
-      return res.status(404).json({ error: 'Settlement not found' });
-    }
-    settlements[settlementIndex] = { ...settlements[settlementIndex], confirmed: true, updatedAt: new Date() };
-    return res.json(settlements[settlementIndex]);
-  }
-  
-  try {
-    const { data, error } = await supabase
-      .from('settlements')
-      .update({ confirmed: true, updated_at: new Date() })
-      .eq('id', req.params.id)
-      .select();
-    
-    if (error) throw error;
-    if (data.length === 0) {
-      return res.status(404).json({ error: 'Settlement not found' });
-    }
-    res.json(data[0]);
-  } catch (error) {
-    console.error('Error confirming settlement:', error);
-    res.status(500).json({ error: 'Failed to confirm settlement' });
-  }
-});
-
-app.delete('/api/settlements/:id', async (req, res) => {
-  if (!isDatabaseConnected) {
-    // Delete settlement from in-memory store for demo mode
-    const settlementIndex = settlements.findIndex(s => s.id === req.params.id);
-    if (settlementIndex === -1) {
-      return res.status(404).json({ error: 'Settlement not found' });
-    }
-    settlements.splice(settlementIndex, 1);
-    return res.status(204).send();
-  }
-  
-  try {
-    const { error } = await supabase
-      .from('settlements')
-      .delete()
-      .eq('id', req.params.id);
-    
-    if (error) throw error;
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting settlement:', error);
-    res.status(500).send();
-  }
-});
-
-// Real-time data subscription endpoints
-app.get('/api/subscribe/users', (req, res) => {
-  if (!isDatabaseConnected) {
-    return res.status(400).json({ error: 'Real-time subscriptions not available in demo mode' });
-  }
-  
-  // In a real implementation, you would set up a WebSocket connection here
-  // For now, we'll just return a success message
-  res.json({ message: 'Real-time subscription for users would be established here' });
-});
-
-app.get('/api/subscribe/groups', (req, res) => {
-  if (!isDatabaseConnected) {
-    return res.status(400).json({ error: 'Real-time subscriptions not available in demo mode' });
-  }
-  
-  // In a real implementation, you would set up a WebSocket connection here
-  // For now, we'll just return a success message
-  res.json({ message: 'Real-time subscription for groups would be established here' });
-});
-
-app.get('/api/subscribe/expenses', (req, res) => {
-  if (!isDatabaseConnected) {
-    return res.status(400).json({ error: 'Real-time subscriptions not available in demo mode' });
-  }
-  
-  // In a real implementation, you would set up a WebSocket connection here
-  // For now, we'll just return a success message
-  res.json({ message: 'Real-time subscription for expenses would be established here' });
-});
-
-app.get('/api/subscribe/settlements', (req, res) => {
-  if (!isDatabaseConnected) {
-    return res.status(400).json({ error: 'Real-time subscriptions not available in demo mode' });
-  }
-  
-  // In a real implementation, you would set up a WebSocket connection here
-  // For now, we'll just return a success message
-  res.json({ message: 'Real-time subscription for settlements would be established here' });
-});
-
-// Add a route to fix expense created_by fields
-app.post('/api/expenses/fix-created-by', async (req, res) => {
-  if (!isDatabaseConnected) {
-    return res.status(400).json({ error: 'Database not connected' });
-  }
-  
-  try {
-    // First, check if the created_by column exists
-    const { data: columnInfo, error: columnError } = await supabase
-      .from('expenses')
-      .select('*')
-      .limit(1);
-    
-    // Try to access created_by to see if it exists
-    let hasCreatedByColumn = false;
-    if (columnInfo && columnInfo.length > 0) {
-      hasCreatedByColumn = 'created_by' in columnInfo[0];
-    }
-    
-    if (!hasCreatedByColumn) {
-      return res.status(400).json({ 
-        error: 'created_by column does not exist in the expenses table',
-        message: 'The database schema needs to be updated to include the created_by column'
-      });
-    }
-    
-    // Fetch all expenses
-    const { data: expenses, error: fetchError } = await supabase
-      .from('expenses')
-      .select('*');
-    
-    if (fetchError) {
-      throw fetchError;
-    }
-    
-    let fixedCount = 0;
-    const errors = [];
-    
-    // Update each expense that doesn't have created_by set
-    for (const expense of expenses) {
-      // Skip if created_by is already set
-      if (expense.created_by) {
-        continue;
-      }
-      
-      // Set created_by to the paid_by user as a default
-      try {
-        const { error: updateError } = await supabase
-          .from('expenses')
-          .update({ created_by: expense.paid_by })
-          .eq('id', expense.id);
-        
-        if (updateError) {
-          errors.push(`Error updating expense ${expense.id}: ${updateError.message}`);
-        } else {
-          fixedCount++;
-        }
-      } catch (updateError) {
-        errors.push(`Error updating expense ${expense.id}: ${updateError.message}`);
-      }
-    }
-    
-    res.json({ 
-      message: `Fixed ${fixedCount} expenses`, 
-      fixedCount, 
-      errors,
-      totalExpenses: expenses.length
-    });
-  } catch (error) {
-    console.error('Error fixing expense created_by fields:', error);
-    res.status(500).json({ error: 'Failed to fix expense created_by fields' });
-  }
-});
-
-// Email sending endpoint for group invitations
-app.post('/api/send-invitation-email', async (req, res) => {
-  const { to, groupName, inviterName, invitationLink } = req.body;
+// POST route for sending invitation emails
+app.post('/api/send-invite', async (req, res) => {
+  const { to, memberName, groupName, inviterName } = req.body;
   
   // Validate required fields
-  if (!to || !groupName || !inviterName || !invitationLink) {
+  if (!to || !memberName || !groupName || !inviterName) {
     return res.status(400).json({ 
-      error: 'Missing required fields: to, groupName, inviterName, and invitationLink are required' 
+      error: 'Missing required fields: to, memberName, groupName, and inviterName are required' 
     });
   }
   
@@ -717,42 +413,401 @@ app.post('/api/send-invitation-email', async (req, res) => {
     return res.status(400).json({ error: 'Invalid email address format' });
   }
   
-  try {
-    // In a real implementation, you would integrate with an email service like SendGrid, Nodemailer, etc.
-    // For this demo, we'll just simulate sending an email
-    
-    console.log('📧 Simulated email sending:');
-    console.log(`To: ${to}`);
-    console.log(`Subject: Invitation to join ${groupName} on SplitSmart`);
-    console.log(`Body: Hello,
-    
-${inviterName} has invited you to join the group "${groupName}" on SplitSmart!
-
-Click the link below to join:
-${invitationLink}
-
-Best regards,
-The SplitSmart Team`);
-    
-    // Simulate email sending delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    res.json({ 
-      success: true, 
-      message: 'Invitation email sent successfully (simulated)',
-      data: { to, groupName, inviterName }
+  // Check if transporter is available
+  if (!transporter) {
+    return res.status(500).json({ 
+      error: 'Email service not configured properly' 
     });
+  }
+  
+  try {
+    // Generate invitation link
+    const invitationLink = `http://localhost:8081/accept-invitation?group=${encodeURIComponent(groupName)}&email=${encodeURIComponent(to)}`;
+    
+    // Use the email service function for consistency
+    const emailResult = await sendGroupInvitationEmail({
+      to: to,
+      memberName: memberName,
+      groupName: groupName,
+      inviterName: inviterName,
+      invitationLink: invitationLink
+    });
+    
+    if (emailResult.success) {
+      res.json({ 
+        success: true, 
+        message: 'Invitation email sent successfully',
+        messageId: emailResult.messageId 
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: emailResult.error || 'Failed to send invitation email' 
+      });
+    }
   } catch (error) {
     console.error('Error sending invitation email:', error);
     res.status(500).json({ 
-      error: 'Failed to send invitation email',
-      message: error.message 
+        success: false, 
+        error: error.message || 'Failed to send invitation email' 
     });
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-  console.log(`API Health Check: http://localhost:${PORT}/api/health`);
+// Add the missing endpoint that the client is trying to call
+app.post('/api/send-invitation-email', async (req, res) => {
+  const { to, memberName, groupName, inviterName, invitationLink } = req.body;
+  
+  // Validate required fields
+  if (!to || !memberName || !groupName || !inviterName) {
+    return res.status(400).json({ 
+      error: 'Missing required fields: to, memberName, groupName, and inviterName are required' 
+    });
+  }
+  
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(to)) {
+    return res.status(400).json({ error: 'Invalid email address format' });
+  }
+  
+  // Check if transporter is available
+  if (!transporter) {
+    // Return a simulated success response in development/mock mode
+    if (process.env.NODE_ENV !== 'production' && process.env.USE_REAL_EMAILS !== 'true') {
+      return res.json({ 
+        success: true, 
+        message: 'Email service is in mock mode. No real email was sent.',
+        data: {
+          messageId: `mock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        }
+      });
+    }
+    
+    return res.status(500).json({ 
+      error: 'Email service not configured properly' 
+    });
+  }
+  
+  try {
+    // If invitationLink is not provided, generate one
+    const finalInvitationLink = invitationLink || `http://localhost:8081/accept-invitation?group=${encodeURIComponent(groupName)}&email=${encodeURIComponent(to)}`;
+    
+    // Use the email service function for consistency
+    const emailResult = await sendGroupInvitationEmail({
+      to: to,
+      memberName: memberName,
+      groupName: groupName,
+      inviterName: inviterName,
+      invitationLink: finalInvitationLink
+    });
+    
+    if (emailResult.success) {
+      res.json({ 
+        success: true, 
+        message: 'Invitation email sent successfully',
+        data: {
+          messageId: emailResult.messageId
+        }
+      });
+    } else {
+      res.status(500).json({ 
+        success: false, 
+        error: emailResult.error || 'Failed to send invitation email' 
+      });
+    }
+  } catch (error) {
+    console.error('Error sending invitation email:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to send invitation email' 
+    });
+  }
 });
+
+// POST route for sending reminder emails
+app.post('/api/send-reminder', async (req, res) => {
+  const { to, memberName, groupName, amountOwed } = req.body;
+  
+  // Validate required fields
+  if (!to || !memberName || !groupName || !amountOwed) {
+    return res.status(400).json({ 
+      error: 'Missing required fields: to, memberName, groupName, and amountOwed are required' 
+    });
+  }
+  
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(to)) {
+    return res.status(400).json({ error: 'Invalid email address format' });
+  }
+  
+  // Check if transporter is available
+  if (!transporter) {
+    return res.status(500).json({ 
+      error: 'Email service not configured properly' 
+    });
+  }
+  
+  try {
+    // Generate payment link
+    const paymentLink = `http://localhost:8081/groups/${encodeURIComponent(groupName)}`;
+    
+    // Send email
+    const mailOptions = {
+      from: `"SplitSmart No-Reply" <${process.env.EMAIL_USER}>`,
+      replyTo: 'no-reply@splitsmart.com',
+      to: to,
+      subject: `Payment Reminder: You owe ${amountOwed} in ${groupName}`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>SplitSmart Payment Reminder</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+              line-height: 1.6;
+              color: #333;
+              background-color: #f8f9fa;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 0 auto;
+              background: #ffffff;
+              border-radius: 8px;
+              box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+              overflow: hidden;
+            }
+            .header {
+              background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+              color: white;
+              padding: 30px 20px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 24px;
+              font-weight: 600;
+            }
+            .content {
+              padding: 30px;
+            }
+            .content p {
+              margin: 0 0 15px 0;
+            }
+            .amount-box {
+              background: #fff5f5;
+              border: 1px solid #fed7d7;
+              border-radius: 6px;
+              padding: 20px;
+              text-align: center;
+              margin: 20px 0;
+            }
+            .amount {
+              font-size: 28px;
+              font-weight: 700;
+              color: #e53e3e;
+              margin: 0;
+            }
+            .group-name {
+              color: #718096;
+              font-size: 16px;
+              margin: 5px 0 0 0;
+            }
+            .button {
+              display: inline-block;
+              background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+              color: white;
+              text-decoration: none;
+              padding: 12px 24px;
+              border-radius: 6px;
+              font-weight: 600;
+              margin: 20px 0;
+            }
+            .button:hover {
+              opacity: 0.9;
+            }
+            .footer {
+              background: #f8f9fa;
+              padding: 20px;
+              text-align: center;
+              font-size: 12px;
+              color: #6c757d;
+              border-top: 1px solid #e9ecef;
+            }
+            .highlight {
+              background: #fff8e6;
+              padding: 15px;
+              border-radius: 6px;
+              margin: 20px 0;
+              border-left: 4px solid #f59e0b;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>Payment Reminder</h1>
+            </div>
+            <div class="content">
+              <p>Hi ${memberName},</p>
+              
+              <p>This is a friendly reminder that you have a pending payment in the group <strong>"${groupName}"</strong> on SplitSmart.</p>
+              
+              <div class="amount-box">
+                <p class="amount">${amountOwed}</p>
+                <p class="group-name">Amount owed in ${groupName}</p>
+              </div>
+              
+              <div class="highlight">
+                <p>Please settle this payment at your earliest convenience to keep your group expenses up to date.</p>
+              </div>
+              
+              <div style="text-align: center;">
+                <a href="${paymentLink}" class="button">Make Payment</a>
+              </div>
+              
+              <p>Or copy and paste this link in your browser:</p>
+              <p style="word-break: break-all; color: #f5576c;">${paymentLink}</p>
+              
+              <p>Thank you for settling your balance!</p>
+            </div>
+            <div class="footer">
+              <p>— The SplitSmart Team</p>
+              <p>This email was sent to ${to}</p>
+              <p>Please do not reply to this email.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        SplitSmart Payment Reminder
+        
+        Hi ${memberName},
+        
+        This is a friendly reminder that you have a pending payment in the group "${groupName}" on SplitSmart.
+        
+        Amount owed: ${amountOwed}
+        Group: ${groupName}
+        
+        Please settle this payment at your earliest convenience to keep your group expenses up to date.
+        
+        Make your payment by visiting:
+        ${paymentLink}
+        
+        Thank you for settling your balance!
+        
+        — The SplitSmart Team
+        This email was sent to ${to}
+        Please do not reply to this email.
+      `
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    
+    console.log('📧 Payment reminder email sent successfully:');
+    console.log('   To:', to);
+    console.log('   Subject:', mailOptions.subject);
+    console.log('   Message ID:', info.messageId);
+    
+    res.json({ 
+      success: true, 
+      message: 'Payment reminder email sent successfully',
+      messageId: info.messageId 
+    });
+  } catch (error) {
+    console.error('Error sending payment reminder email:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message || 'Failed to send payment reminder email' 
+    });
+  }
+});
+
+// DELETE route for deleting groups
+app.delete('/api/groups/:id', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Group deletion is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { id } = req.params;
+    
+    // Validate required fields
+    if (!id) {
+      return res.status(400).json({ error: 'Group ID is required' });
+    }
+    
+    const groupsCollection = db.collection('groups');
+    
+    // Check if group exists
+    const group = await groupsCollection.findOne({ id });
+    if (!group) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+    
+    // Delete the group
+    const result = await groupsCollection.deleteOne({ id });
+    
+    if (result.deletedCount > 0) {
+      // Also delete associated expenses and settlements
+      const expensesCollection = db.collection('expenses');
+      await expensesCollection.deleteMany({ groupId: id });
+      
+      const settlementsCollection = db.collection('settlements');
+      await settlementsCollection.deleteMany({ groupId: id });
+      
+      res.status(204).send(); // No content
+    } else {
+      res.status(500).json({ error: 'Failed to delete group' });
+    }
+  } catch (error) {
+    console.error('Error deleting group:', error);
+    res.status(500).json({ error: 'Failed to delete group' });
+  }
+});
+
+// Add a database status endpoint
+app.get('/api/db-status', (req, res) => {
+  const connected = isDatabaseAvailable();
+  res.json({ 
+    connected,
+    databaseName: process.env.DATABASE_NAME || 'splitwiseApp',
+    message: connected 
+      ? 'Database is connected and operational' 
+      : 'Database is not connected. Application is running in limited mode.'
+  });
+});
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../dist')));
+  
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../dist/index.html'));
+  });
+}
+
+// Start server
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('🛑 Shutting down server...');
+  await closeDatabase();
+  process.exit(0);
+});
+
+export { io, connectedClients };

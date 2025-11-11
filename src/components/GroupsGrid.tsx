@@ -51,8 +51,15 @@ const GroupCard = ({ group }: { group: any }) => {
   const balancePositiveClass = "bg-gradient-success text-white";
   const balanceNegativeClass = "bg-gradient-to-r from-destructive to-warning text-white";
   
-  const handleDeleteGroup = () => {
-    deleteGroup(group.id);
+  // Filter members to only show accepted members
+  const acceptedMembers = group.members ? group.members.filter((member: any) => member.status !== 'invited') : [];
+  
+  const handleDeleteGroup = async () => {
+    try {
+      await deleteGroup(group.id);
+    } catch (error) {
+      console.error('Error deleting group:', error);
+    }
     setShowDeleteDialog(false);
   };
 
@@ -65,10 +72,10 @@ const GroupCard = ({ group }: { group: any }) => {
               <Users className="h-5 w-5 text-white" />
             </div>
             <div className="min-w-0">
-              <h3 className="font-semibold text-foreground truncate">{group.name}</h3>
+              <h3 className="font-semibold text-foreground truncate">{group.name || 'Unnamed Group'}</h3>
               <p className="text-xs text-muted-foreground flex items-center">
                 <Calendar className="h-2.5 w-2.5 mr-1" />
-                {group.lastActivity}
+                {group.lastActivity || 'No activity'}
               </p>
             </div>
           </Link>
@@ -106,26 +113,26 @@ const GroupCard = ({ group }: { group: any }) => {
         {/* Member Avatars */}
         <div className="flex items-center space-x-1 mb-3">
           <div className="flex -space-x-1">
-            {group.members.slice(0, 4).map((member, index) => (
+            {acceptedMembers.slice(0, 4).map((member: any, index: number) => (
               <Avatar 
-                key={member.id} 
+                key={member.id || index} 
                 className={avatarWrapperClass}
-                style={{ zIndex: group.members.length - index }}
+                style={{ zIndex: acceptedMembers.length - index }}
               >
                 <AvatarImage src={member.avatar} />
                 <AvatarFallback className="bg-gradient-accent text-accent-foreground text-xs font-medium">
-                  {member.name.charAt(0)}
+                  {member.name ? member.name.charAt(0) : '?'}
                 </AvatarFallback>
               </Avatar>
             ))}
-            {group.members.length > 4 && (
+            {acceptedMembers.length > 4 && (
               <div className="w-6 h-6 rounded-full bg-muted border flex items-center justify-center text-xs font-medium text-muted-foreground">
-                +{group.members.length - 4}
+                +{acceptedMembers.length - 4}
               </div>
             )}
           </div>
           <span className="text-xs text-muted-foreground">
-            {group.members.length} member{group.members.length !== 1 ? 's' : ''}
+            {acceptedMembers.length} member{acceptedMembers.length !== 1 ? 's' : ''}
           </span>
         </div>
 
@@ -134,12 +141,12 @@ const GroupCard = ({ group }: { group: any }) => {
           <div className="flex items-center space-x-1">
             <DollarSign className="h-3 w-3 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Total:</span>
-            <span className="font-medium text-sm">₹{group.totalSpent.toLocaleString()}</span>
+            <span className="font-medium text-sm">₹{(group.totalSpent || 0).toLocaleString()}</span>
           </div>
         </div>
 
         <div className="mt-2 pt-2 border-t border-border/50">
-          {group.yourBalance === 0 ? (
+          {(!group.yourBalance || group.yourBalance === 0) ? (
             <Badge variant="outline" className="w-full justify-center py-1 text-xs">
               Settled up! 🎉
             </Badge>
@@ -150,7 +157,7 @@ const GroupCard = ({ group }: { group: any }) => {
                 variant={isOwed ? "default" : "destructive"}
                 className={`text-xs py-0.5 ${isOwed ? balancePositiveClass : balanceNegativeClass}`}
               >
-                {isOwed ? "+" : ""}₹{Math.abs(group.yourBalance).toFixed(0)}
+                {isOwed ? "+" : ""}₹{Math.abs(group.yourBalance || 0).toFixed(0)}
               </Badge>
             </div>
           )}
@@ -163,7 +170,7 @@ const GroupCard = ({ group }: { group: any }) => {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Group</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete "{group.name}"? This action cannot be undone.
+              Are you sure you want to delete "{group.name || 'this group'}"? This action cannot be undone.
               All expenses and balances in this group will be permanently lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -192,44 +199,75 @@ export const GroupsGrid = ({
     memberCount: string;
   };
 }) => {
-  const { groups } = useGroups();
+  const { groups, isLoading } = useGroups();
 
-  console.log('📊 GroupsGrid rendering with:', { groups, searchQuery, filters }); // Debug log
+  console.log('📊 GroupsGrid rendering with:', { groups, isLoading, searchQuery, filters }); // Debug log
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <p className="mt-4 text-muted-foreground">Loading groups...</p>
+      </div>
+    );
+  }
+
+  // Handle case where groups is undefined or null
+  if (!groups) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 mx-auto mb-4 bg-gradient-destructive/20 rounded-full flex items-center justify-center">
+          <Users className="h-8 w-8 text-destructive" />
+        </div>
+        <h3 className="text-lg font-semibold mb-2">Error loading groups</h3>
+        <p className="text-muted-foreground mb-4">There was an issue loading your groups. Please try refreshing the page.</p>
+        {onCreateGroup && (
+          <Button onClick={onCreateGroup} className="bg-gradient-primary hover:bg-gradient-primary/90">
+            Create Your First Group
+          </Button>
+        )}
+      </div>
+    );
+  }
 
   // Filter and sort groups based on search and filters
   const filteredGroups = groups
     .filter(group => {
       // Search filter
-      if (searchQuery && !group.name.toLowerCase().includes(searchQuery.toLowerCase()) && 
+      if (searchQuery && !group.name?.toLowerCase().includes(searchQuery.toLowerCase()) && 
           !group.description?.toLowerCase().includes(searchQuery.toLowerCase())) {
         return false;
       }
 
       // Balance filter
-      if (filters.balanceFilter === "owed" && group.yourBalance <= 0) return false;
-      if (filters.balanceFilter === "owes" && group.yourBalance >= 0) return false;
-      if (filters.balanceFilter === "settled" && group.yourBalance !== 0) return false;
+      if (filters.balanceFilter === "owed" && (group.yourBalance || 0) <= 0) return false;
+      if (filters.balanceFilter === "owes" && (group.yourBalance || 0) >= 0) return false;
+      if (filters.balanceFilter === "settled" && (group.yourBalance || 0) !== 0) return false;
 
       // Member count filter
-      if (filters.memberCount === "small" && group.members.length > 3) return false;
-      if (filters.memberCount === "medium" && (group.members.length <= 3 || group.members.length > 6)) return false;
-      if (filters.memberCount === "large" && group.members.length <= 6) return false;
+      const memberCount = group.members ? group.members.length : 0;
+      if (filters.memberCount === "small" && memberCount > 3) return false;
+      if (filters.memberCount === "medium" && (memberCount <= 3 || memberCount > 6)) return false;
+      if (filters.memberCount === "large" && memberCount <= 6) return false;
 
       return true;
     })
     .sort((a, b) => {
       switch (filters.sortBy) {
         case "name":
-          return a.name.localeCompare(b.name);
+          return (a.name || '').localeCompare(b.name || '');
         case "amount":
-          return b.totalSpent - a.totalSpent;
+          return (b.totalSpent || 0) - (a.totalSpent || 0);
         case "balance":
-          return Math.abs(b.yourBalance) - Math.abs(a.yourBalance);
+          return Math.abs(b.yourBalance || 0) - Math.abs(a.yourBalance || 0);
         case "members":
-          return b.members.length - a.members.length;
+          const aMemberCount = a.members ? a.members.length : 0;
+          const bMemberCount = b.members ? b.members.length : 0;
+          return bMemberCount - aMemberCount;
         case "recent":
         default:
-          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+          return new Date(b.createdAt || Date.now()).getTime() - new Date(a.createdAt || Date.now()).getTime();
       }
     });
 

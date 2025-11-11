@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Eye, EyeOff, Users, Calculator, Shield, LogIn, UserPlus } from "lucide-react";
+import { Eye, EyeOff, Users, Calculator, Shield, LogIn, UserPlus, CheckCircle, XCircle, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Login = () => {
@@ -16,8 +16,8 @@ const Login = () => {
   const [name, setName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isSuccess, setIsSuccess] = useState(false);
   const navigate = useNavigate();
   const { login, signup } = useAuth();
 
@@ -25,16 +25,16 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+    setSuccess("");
 
     try {
       // Attempt to login with the provided credentials
-      const success = await login(email, password);
+      const result = await login(email, password);
       
-      if (!success) {
-        setError("Invalid email or password");
+      if (!result.success) {
+        setError(result.message || "Invalid email or password");
       } else {
-        // Success - navigation is handled by the auth context
-        setIsSuccess(true);
+        setSuccess(result.message || "Login successful! Redirecting...");
       }
     } catch (err) {
       setError("An error occurred during login. Please try again.");
@@ -47,6 +47,7 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setError("");
+    setSuccess("");
 
     // Simple validation
     if (password !== confirmPassword) {
@@ -63,13 +64,12 @@ const Login = () => {
 
     try {
       // Use our new signup function that works in demo mode
-      const success = await signup(name, email, password);
+      const result = await signup(name, email, password);
       
-      if (success) {
-        setIsSuccess(true);
-        setError("Account created successfully! Redirecting to dashboard...");
+      if (result.success) {
+        setSuccess(result.message || "Account created successfully! Redirecting to dashboard...");
       } else {
-        setError("Failed to create account. Please try again.");
+        setError(result.message || "Failed to create account. Please try again.");
       }
     } catch (err) {
       setError("An error occurred during signup. Please try again.");
@@ -137,16 +137,25 @@ const Login = () => {
               </TabsList>
               
               <TabsContent value="login" className="space-y-4 animate-fade-in">
-                {error && !isSuccess && (
-                  <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm animate-shake">
+                {error && (
+                  <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm animate-shake flex items-center">
+                    <XCircle className="w-4 h-4 mr-2" />
                     {error}
                   </div>
                 )}
-                {isSuccess && (
-                  <div className="bg-success/10 text-success p-3 rounded-md text-sm animate-pulse">
-                    Login successful! Redirecting...
+                {success && (
+                  <div className="bg-success/10 text-success p-3 rounded-md text-sm animate-pulse flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {success}
                   </div>
                 )}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <h3 className="font-medium text-blue-800 mb-2">Demo Login Information</h3>
+                  <p className="text-sm text-blue-700 mb-1">For demo purposes, you can log in with:</p>
+                  <p className="text-sm text-blue-700"><strong>Email:</strong> tusha@splitsmart.com</p>
+                  <p className="text-sm text-blue-700"><strong>Password:</strong> Kavish12</p>
+                  <p className="text-xs text-blue-600 mt-2">Or use any email with any password to log in as an existing user.</p>
+                </div>
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
@@ -194,11 +203,11 @@ const Login = () => {
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-primary hover:bg-gradient-primary/90 text-primary-foreground group transition-all duration-300 hover:scale-[1.02] hover:shadow-glow"
-                    disabled={isLoading || isSuccess}
+                    disabled={isLoading}
                   >
                     {isLoading ? (
                       <span className="flex items-center justify-center">
-                        <span className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin mr-2"></span>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Signing in...
                       </span>
                     ) : (
@@ -217,16 +226,22 @@ const Login = () => {
               </TabsContent>
               
               <TabsContent value="signup" className="space-y-4 animate-fade-in">
-                {error && !isSuccess && (
-                  <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm animate-shake">
+                {error && (
+                  <div className="bg-destructive/10 text-destructive p-3 rounded-md text-sm animate-shake flex items-center">
+                    <XCircle className="w-4 h-4 mr-2" />
                     {error}
                   </div>
                 )}
-                {isSuccess && (
-                  <div className="bg-success/10 text-success p-3 rounded-md text-sm animate-pulse">
-                    Account created successfully!
+                {success && (
+                  <div className="bg-success/10 text-success p-3 rounded-md text-sm animate-pulse flex items-center">
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    {success}
                   </div>
                 )}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <h3 className="font-medium text-blue-800 mb-2">Create Your Account</h3>
+                  <p className="text-sm text-blue-700">Enter your details below to create a new account. All information will be securely stored.</p>
+                </div>
                 <form onSubmit={handleSignup} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-name">Full Name</Label>
@@ -317,11 +332,11 @@ const Login = () => {
                   <Button 
                     type="submit" 
                     className="w-full bg-gradient-primary hover:bg-gradient-primary/90 text-primary-foreground group transition-all duration-300 hover:scale-[1.02] hover:shadow-glow"
-                    disabled={isLoading || isSuccess}
+                    disabled={isLoading}
                   >
                     {isLoading ? (
                       <span className="flex items-center justify-center">
-                        <span className="h-4 w-4 rounded-full border-2 border-primary-foreground border-t-transparent animate-spin mr-2"></span>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                         Creating Account...
                       </span>
                     ) : (

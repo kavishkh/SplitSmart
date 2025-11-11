@@ -63,6 +63,12 @@ const GroupDetail = () => {
   const settlements = getSettlementsByGroup(id || "");
   const balances = calculateBalances(id || "");
   
+  // Calculate total spent for the group
+  const totalSpent = expenses.reduce((sum, expense) => sum + expense.amount, 0);
+  
+  // Filter out invited members who haven't accepted yet
+  const acceptedMembers = group ? group.members.filter((member: any) => member.status !== 'invited') : [];
+  
   const handleRefresh = async () => {
     setIsRefreshing(true);
     try {
@@ -146,15 +152,20 @@ const GroupDetail = () => {
     setShowDeleteGroupDialog(true);
   };
   
-  const handleDeleteGroup = () => {
+  const handleDeleteGroup = async () => {
     if (!group) return;
     
-    deleteGroup(group.id);
-    toast.success(`Group "${group.name}" deleted successfully`);
-    setShowDeleteGroupDialog(false);
-    
-    // Navigate back to groups page
-    window.location.href = "/groups";
+    try {
+      await deleteGroup(group.id);
+      toast.success(`Group "${group.name}" deleted successfully`);
+      setShowDeleteGroupDialog(false);
+      
+      // Navigate to home page
+      window.location.href = "/";
+    } catch (error) {
+      console.error('Error deleting group:', error);
+      toast.error('Failed to delete group');
+    }
   };
   
   const handleEditExpense = (expense: any) => {
@@ -217,91 +228,50 @@ const GroupDetail = () => {
   }
   
   const handleShareGroup = () => {
-    const groupLink = `${window.location.origin}/groups/${group.id}/join`;
+    const groupLink = `${window.location.origin}/join-group/${group.id}`;
     navigator.clipboard.writeText(groupLink).then(() => {
       toast.success("Group invite link copied to clipboard!");
     }).catch(() => {
       toast.error("Failed to copy link");
     });
   };
-  
+
   const handleSettleUp = (memberId: string, memberName: string, amount: number) => {
     // Instead of directly setting the member, we'll show the member selection modal
     setSettlementAmountForSelection(Math.abs(amount));
     setShowSelectMemberToPay(true);
   };
 
-  const handleMemberSelected = (memberId: string, amount: number) => {
-    // Set the selected member and amount, then show the settlement modal
-    setSettlementMember(memberId);
-    setSettlementAmount(amount);
-    setShowSettlement(true);
-  };
-
-  // Calculate total group spent from expenses
-  const totalSpent = expenses.reduce((sum, expense) => sum + expense.amount, 0);
-  
-  // Style constants
-  const groupIconClass = `w-16 h-16 bg-gradient-to-br ${group.color} rounded-xl flex items-center justify-center shadow-md`;
-  const heroButtonClass = "bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl text-lg px-8 py-6 h-auto hover:-translate-y-1 hover:scale-105 transition-all duration-300";
-  const categoryIconClass = "w-10 h-10 bg-gradient-primary/20 rounded-lg flex items-center justify-center";
-  const cardHoverClass = "hover:shadow-md transition-shadow";
-  
-  const getCategoryIcon = (category: string) => {
-    const icons = {
-      food: "🍽️",
-      transport: "🚗",
-      entertainment: "🎬",
-      utilities: "💡",
-      shopping: "🛍️",
-      other: "📄"
-    };
-    return icons[category] || "📄";
-  };
-  
-  const formatDate = (date: Date) => {
-    const now = new Date();
-    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-    
-    if (diffInHours < 1) return "Just now";
-    if (diffInHours < 24) return `${Math.floor(diffInHours)} hours ago`;
-    if (diffInHours < 48) return "1 day ago";
-    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)} days ago`;
-    return date.toLocaleDateString();
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       <Header />
       
-      <main className="container mx-auto px-4 py-8">
-        {/* Back Navigation */}
-        <div className="mb-6 animate-slide-up">
-          <Link to="/groups">
-            <Button variant="ghost" className="mb-4">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Groups
-            </Button>
-          </Link>
-        </div>
-
+      <main className="container mx-auto px-4 py-6">
         {/* Group Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6 animate-slide-up">
           <div className="flex items-center space-x-3">
-            <div className={`w-12 h-12 bg-gradient-to-br ${group.color} rounded-lg flex items-center justify-center shadow-sm`}>
-              <Users className="h-6 w-6 text-white" />
-            </div>
+            <Link to="/groups">
+              <Button variant="ghost" size="icon" className="h-8 w-8">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
             <div>
-              <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
-              <p className="text-muted-foreground text-sm">{group.description}</p>
-              <div className="flex items-center space-x-3 mt-1 text-xs text-muted-foreground">
+              <div className="flex items-center space-x-2">
+                <h1 className="text-2xl font-bold text-foreground">{group.name}</h1>
+                {group.ownerId === (currentUser?.id || "current-user") && (
+                  <Badge variant="secondary" className="text-xs">
+                    Owner
+                  </Badge>
+                )}
+              </div>
+              <div className="flex items-center space-x-4 text-sm text-muted-foreground">
                 <div className="flex items-center space-x-1">
                   <Calendar className="h-3 w-3" />
-                  <span>Created {group.createdAt.toLocaleDateString()}</span>
+                  <span>Created {new Date(group.createdAt).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <Users className="h-3 w-3" />
-                  <span>{group.members.length} members</span>
+                  <span>{acceptedMembers.length} members</span>
                 </div>
               </div>
             </div>
@@ -370,7 +340,7 @@ const GroupDetail = () => {
             {/* Group Members */}
             <div className="animate-slide-up" style={{ animationDelay: "0.2s" }}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-foreground">Group Members ({group.members.length})</h2>
+                <h2 className="text-xl font-bold text-foreground">Group Members ({acceptedMembers.length})</h2>
                 <Button 
                   size="sm" 
                   variant="outline" 
@@ -383,7 +353,7 @@ const GroupDetail = () => {
               </div>
               
               <div className="space-y-3">
-                {group.members.map((member) => {
+                {acceptedMembers.map((member: any) => {
                   const memberBalance = balances[member.id] || 0;
                   return (
                     <Card key={member.id} className="card-hover">
@@ -500,325 +470,297 @@ const GroupDetail = () => {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-3 max-h-60 overflow-y-auto">
-                  {settlements.slice(0, 5).map((settlement) => {
-                    const fromMember = group.members.find((m: any) => m.id === settlement.fromMember);
-                    const toMember = group.members.find((m: any) => m.id === settlement.toMember);
-                    
-                    return (
-                      <Card key={settlement.id} className="card-hover">
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <Avatar className="w-8 h-8">
-                                <AvatarImage src={fromMember?.avatar} />
-                                <AvatarFallback className="bg-gradient-primary text-primary-foreground text-xs">
-                                  {fromMember?.name.charAt(0) || "F"}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="min-w-0">
-                                <div className="flex items-center space-x-1">
-                                  <span className="text-sm font-medium truncate">{fromMember?.name || "Unknown"}</span>
-                                  <span className="text-xs text-muted-foreground">pays</span>
-                                  <span className="text-sm font-medium truncate">{toMember?.name || "Unknown"}</span>
-                                </div>
-                                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  <span>{new Date(settlement.date).toLocaleDateString()}</span>
-                                </div>
-                              </div>
+                <div className="space-y-3">
+                  {settlements.slice(0, 5).map((settlement) => (
+                    <Card key={settlement.id} className="card-hover">
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-success flex items-center justify-center">
+                              <CreditCard className="h-4 w-4 text-white" />
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <div className="text-right">
-                                <div className="text-sm font-semibold text-foreground">
-                                  ₹{settlement.amount.toFixed(0)}
-                                </div>
-                                <Badge 
-                                  variant={settlement.confirmed ? "default" : "secondary"}
-                                  className={`text-xs py-0.5 ${settlement.confirmed ? 'bg-gradient-success' : ''}`}
-                                >
-                                  {settlement.confirmed ? 'Confirmed' : 'Pending'}
-                                </Badge>
-                              </div>
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                className="h-6 text-xs px-2"
-                                onClick={() => {
-                                  setSelectedSettlement(settlement);
-                                  setShowConfirmSettlement(true);
-                                }}
-                              >
-                                {settlement.confirmed ? (
-                                  <CheckCircle className="h-3 w-3 text-success" />
-                                ) : (
-                                  <CreditCard className="h-3 w-3" />
-                                )}
-                              </Button>
+                            <div>
+                              <p className="text-sm font-medium">
+                                {settlement.fromMember === (currentUser?.id || "current-user") 
+                                  ? `You paid ${settlement.toMemberName || "member"}`
+                                  : `${settlement.fromMemberName || "Member"} paid you`}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(settlement.date).toLocaleDateString()}
+                              </p>
                             </div>
                           </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium">₹{settlement.amount.toFixed(0)}</span>
+                            {settlement.confirmed ? (
+                              <Badge variant="default" className="bg-gradient-success text-white text-xs py-0.5">
+                                <CheckCircle className="h-2.5 w-2.5 mr-1" />
+                                Confirmed
+                              </Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs py-0.5">
+                                Pending
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+              
+              {settlements.length > 5 && (
+                <div className="text-center mt-3">
+                  <Button variant="outline" size="sm" onClick={() => setShowSettlement(true)}>
+                    View All Settlements
+                  </Button>
                 </div>
               )}
             </div>
-            
+
             {/* Expenses Section */}
             <div className="animate-slide-up" style={{ animationDelay: "0.4s" }}>
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-foreground">Group Expenses ({expenses.length})</h2>
+                <h2 className="text-xl font-bold text-foreground">Recent Expenses ({expenses.length})</h2>
                 <Badge variant="secondary" className="text-sm">
-                  {expenses.length} expense{expenses.length !== 1 ? 's' : ''}
+                  ₹{totalSpent.toLocaleString()} total
                 </Badge>
               </div>
               
               {expenses.length === 0 ? (
-                <Card className="text-center py-8">
+                <Card className="text-center py-6">
                   <CardContent className="p-0">
                     <Receipt className="h-10 w-10 mx-auto mb-3 text-muted-foreground" />
                     <h3 className="text-base font-semibold mb-1">No expenses yet</h3>
                     <p className="text-xs text-muted-foreground mb-3">
-                      Start tracking expenses with your group members.
+                      Add your first expense to start tracking group spending.
                     </p>
                     <Button size="sm" onClick={() => setShowAddExpense(true)}>
                       <Plus className="h-3 w-3 mr-1" />
-                      Add First Expense
+                      Add Expense
                     </Button>
                   </CardContent>
                 </Card>
               ) : (
                 <div className="space-y-3">
-                  {expenses.map((expense, index) => {
-                    const paidByMember = group.members.find(m => m.id === expense.paidBy);
-                    return (
-                      <Card key={expense.id} className="card-hover">
-                        <CardContent className="p-3">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <div className="w-8 h-8 bg-gradient-primary/20 rounded-md flex items-center justify-center">
-                                <span className="text-sm">{getCategoryIcon(expense.category)}</span>
-                              </div>
-                              <div className="min-w-0">
-                                <h4 className="font-medium text-sm truncate">{expense.description}</h4>
-                                <div className="flex items-center space-x-1 text-xs text-muted-foreground">
-                                  <span>by {paidByMember?.name || "Unknown"}</span>
-                                  <span>•</span>
-                                  <div className="flex items-center space-x-1">
-                                    <Clock className="h-2.5 w-2.5" />
-                                    <span>{formatDate(expense.date)}</span>
-                                  </div>
-                                </div>
+                  {expenses.slice(0, 5).map((expense) => (
+                    <Card key={expense.id} className="card-hover">
+                      <CardContent className="p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            <div className="w-8 h-8 rounded-full bg-gradient-primary flex items-center justify-center">
+                              <Receipt className="h-4 w-4 text-white" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium truncate">{expense.description}</p>
+                              <div className="flex items-center space-x-2 text-xs text-muted-foreground">
+                                <span>{group.members.find((m: any) => m.id === expense.paidBy)?.name || "Member"}</span>
+                                <span>•</span>
+                                <span>{new Date(expense.date).toLocaleDateString()}</span>
                               </div>
                             </div>
-                            <div className="flex items-center space-x-1">
-                              <div className="text-right">
-                                <div className="text-sm font-semibold text-foreground">
-                                  ₹{expense.amount.toFixed(0)}
-                                </div>
-                                <div className="text-xs text-muted-foreground">
-                                  {expense.splitBetween.length} way{expense.splitBetween.length !== 1 ? 's' : ''}
-                                </div>
-                              </div>
-                              <div className="flex flex-col space-y-0">
-                                {/* Show Pay button if current user owes money for this expense */}
-                                {currentUser?.id !== expense.paidBy && expense.splitBetween.includes(currentUser?.id) && (
-                                  <Button 
-                                    size="icon" 
-                                    variant="ghost" 
-                                    onClick={() => {
-                                      setExpenseToPay(expense);
-                                      setShowPayExpense(true);
-                                    }}
-                                    className="h-6 w-6 text-success hover:text-success"
-                                  >
-                                    <Wallet className="h-3 w-3" />
-                                  </Button>
-                                )}
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-medium">₹{expense.amount.toFixed(0)}</span>
+                            {expense.createdBy === (currentUser?.id || "current-user") && (
+                              <div className="flex space-x-1">
                                 <Button 
                                   size="icon" 
                                   variant="ghost" 
-                                  onClick={() => handleEditExpense(expense)}
                                   className="h-6 w-6"
+                                  onClick={() => handleEditExpense(expense)}
                                 >
                                   <Edit className="h-3 w-3" />
                                 </Button>
                                 <Button 
                                   size="icon" 
                                   variant="ghost" 
-                                  onClick={() => handleDeleteExpense(expense)}
                                   className="h-6 w-6 text-destructive hover:text-destructive"
+                                  onClick={() => handleDeleteExpense(expense)}
                                 >
                                   <Trash2 className="h-3 w-3" />
                                 </Button>
                               </div>
-                            </div>
+                            )}
                           </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
+                        </div>
+                        
+                        {/* Split Info */}
+                        <div className="mt-2 pt-2 border-t border-border/50">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Split between {expense.splitBetween?.length || 1} people</span>
+                            <span className="font-medium">
+                              Your share: ₹{((expense.amount / (expense.splitBetween?.length || 1)) || 0).toFixed(0)}
+                            </span>
+                          </div>
+                          {/* Add Pay button if current user owes money for this expense */}
+                          {expense.paidBy !== (currentUser?.id || "current-user") && 
+                           expense.splitBetween?.includes(currentUser?.id || "current-user") && (
+                            <div className="mt-2 flex justify-end">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                className="h-6 text-xs px-2 bg-success/10 hover:bg-success/20 text-success border-success/30"
+                                onClick={() => {
+                                  setExpenseToPay(expense);
+                                  setShowPayExpense(true);
+                                }}
+                              >
+                                <CreditCard className="h-3 w-3 mr-1" />
+                                Pay Your Share
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+              
+              {expenses.length > 5 && (
+                <div className="text-center mt-3">
+                  <Link to="/expenses">
+                    <Button variant="outline" size="sm">
+                      View All Expenses
+                    </Button>
+                  </Link>
                 </div>
               )}
             </div>
           </div>
         </div>
-        
-        {/* Delete Member Confirmation Dialog */}
-        <AlertDialog open={showDeleteMemberDialog} onOpenChange={setShowDeleteMemberDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Remove Member</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to remove {memberToDelete?.name} from "{group.name}"? 
-                This action cannot be undone. They will no longer have access to group expenses and balances.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteMember} className="bg-destructive hover:bg-destructive/90">
-                Remove Member
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        
-        {/* Delete Group Confirmation Dialog */}
-        <AlertDialog open={showDeleteGroupDialog} onOpenChange={setShowDeleteGroupDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Group</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete "{group.name}"? This action cannot be undone.
-                All expenses and balances in this group will be permanently lost.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90">
-                Delete Group
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        
-        {/* Delete Expense Confirmation Dialog */}
-        <AlertDialog open={showDeleteExpenseDialog} onOpenChange={setShowDeleteExpenseDialog}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Delete Expense</AlertDialogTitle>
-              <AlertDialogDescription>
-                Are you sure you want to delete "{expenseToDelete?.description}"? This action cannot be undone.
-                This expense will be permanently removed from the group.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel onClick={() => setExpenseToDelete(null)}>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmDeleteExpense} className="bg-destructive hover:bg-destructive/90">
-                Delete Expense
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
-        
-        {/* Add Member Modal */}
-        {group && (
-          <AddMemberModal 
-            open={showAddMember}
-            onOpenChange={setShowAddMember}
-            onAddMembers={handleAddMembersToGroup}
-            existingMembers={group.members}
-          />
-        )}
-        
-        {/* Add Expense Modal */}
-        <AddExpenseModal 
-          open={showAddExpense} 
-          onOpenChange={setShowAddExpense} 
-          preselectedGroupId={group.id} 
-        />
-        
-        <SettlementModal 
-          open={showSettlement} 
-          onOpenChange={setShowSettlement} 
-          groupId={group.id}
-          suggestedMember={settlementMember}
-          suggestedAmount={settlementAmount}
-        />
-        
-        <SelectMemberToPayModal
-          open={showSelectMemberToPay}
-          onOpenChange={setShowSelectMemberToPay}
-          groupId={group.id}
-          groupName={group.name}
-          members={group.members}
-          currentUser={currentUser}
-          onMemberSelected={handleMemberSelected}
-          suggestedAmount={settlementAmountForSelection}
-        />
-        
-        {/* Edit Member Modal */}
-        {selectedMember && (
-          <EditMemberModal
-            open={showEditMember}
-            onOpenChange={setShowEditMember}
-            member={selectedMember}
-            onSave={handleSaveMember}
-          />
-        )}
-        
-        {/* Edit Expense Modal */}
-        {selectedExpense && (
-          <EditExpenseModal
-            open={showEditExpense}
-            onOpenChange={setShowEditExpense}
-            expense={selectedExpense}
-            groups={[{id: group.id, name: group.name}]}
-            onSave={handleSaveExpense}
-          />
-        )}
-        
-        {/* Invite Member Modal */}
-        {group && (
-          <InviteMemberModal
-            open={showInviteMember}
-            onOpenChange={setShowInviteMember}
-            groupId={group.id}
-            groupName={group.name}
-          />
-        )}
-        
-        {/* Confirm Settlement Modal */}
-        {selectedSettlement && (
-          <ConfirmSettlementModal
-            open={showConfirmSettlement}
-            onOpenChange={setShowConfirmSettlement}
-            settlement={selectedSettlement}
-            onConfirm={(settlementId) => {
-              // Refresh settlements after confirmation
-              refreshExpenses();
-            }}
-          />
-        )}
-        
-        {/* Pay Expense Modal */}
-        {expenseToPay && group && (
-          <PayExpenseModal
-            open={showPayExpense}
-            onOpenChange={(open) => {
-              setShowPayExpense(open);
-              if (!open) setExpenseToPay(null);
-            }}
-            expense={expenseToPay}
-            groupId={group.id}
-          />
-        )}
       </main>
 
-      {/* Floating Elements */}
-      <div className="fixed top-20 right-10 w-32 h-32 bg-gradient-primary/10 rounded-full blur-3xl animate-float -z-10" />
-      <div className="fixed bottom-20 left-10 w-24 h-24 bg-gradient-accent/10 rounded-full blur-2xl animate-float -z-10" style={{ animationDelay: "1s" }} />
+      {/* Modals */}
+      <AddExpenseModal 
+        open={showAddExpense} 
+        onOpenChange={setShowAddExpense} 
+        preselectedGroupId={group.id}
+      />
+      
+      <SettlementModal 
+        open={showSettlement} 
+        onOpenChange={setShowSettlement} 
+        groupId={group.id}
+      />
+      
+      <EditMemberModal 
+        open={showEditMember} 
+        onOpenChange={setShowEditMember} 
+        member={selectedMember}
+        onSave={handleSaveMember}
+      />
+      
+      <EditExpenseModal 
+        open={showEditExpense} 
+        onOpenChange={setShowEditExpense} 
+        expense={selectedExpense}
+        groups={group ? [group] : []}
+        onSave={handleSaveExpense}
+      />
+      
+      <AddMemberModal 
+        open={showAddMember} 
+        onOpenChange={setShowAddMember} 
+        onAddMembers={handleAddMembersToGroup}
+        existingMembers={acceptedMembers}
+      />
+      
+      <InviteMemberModal 
+        open={showInviteMember} 
+        onOpenChange={setShowInviteMember} 
+        groupId={group.id}
+        groupName={group.name}
+        ownerId={group.ownerId}
+      />
+      
+      <ConfirmSettlementModal 
+        open={showConfirmSettlement} 
+        onOpenChange={setShowConfirmSettlement} 
+        settlement={selectedSettlement}
+        onConfirm={() => {}}
+      />
+      
+      <PayExpenseModal 
+        open={showPayExpense} 
+        onOpenChange={setShowPayExpense} 
+        expense={expenseToPay}
+        groupId={group.id}
+      />
+      
+      <SelectMemberToPayModal 
+        open={showSelectMemberToPay} 
+        onOpenChange={setShowSelectMemberToPay} 
+        groupId={group.id}
+        groupName={group.name}
+        members={acceptedMembers.filter((m: any) => m.id !== (currentUser?.id || "current-user"))}
+        currentUser={currentUser}
+        onMemberSelected={(memberId, amount) => {
+          setSettlementMember(memberId);
+          setSettlementAmount(amount);
+          setShowSelectMemberToPay(false);
+          setShowSettlement(true);
+        }}
+        suggestedAmount={settlementAmountForSelection}
+      />
+
+      {/* Delete Member Dialog */}
+      <AlertDialog open={showDeleteMemberDialog} onOpenChange={setShowDeleteMemberDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Member</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {memberToDelete?.name} from "{group.name}"? 
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteMember} className="bg-destructive hover:bg-destructive/90">
+              Remove Member
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Group Dialog */}
+      <AlertDialog open={showDeleteGroupDialog} onOpenChange={setShowDeleteGroupDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{group.name}"? This action cannot be undone.
+              All expenses and balances in this group will be permanently lost.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteGroup} className="bg-destructive hover:bg-destructive/90">
+              Delete Group
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Expense Dialog */}
+      <AlertDialog open={showDeleteExpenseDialog} onOpenChange={setShowDeleteExpenseDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Expense</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{expenseToDelete?.description}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteExpense} className="bg-destructive hover:bg-destructive/90">
+              Delete Expense
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
