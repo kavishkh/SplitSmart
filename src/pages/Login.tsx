@@ -149,13 +149,6 @@ const Login = () => {
                     {success}
                   </div>
                 )}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                  <h3 className="font-medium text-blue-800 mb-2">Demo Login Information</h3>
-                  <p className="text-sm text-blue-700 mb-1">For demo purposes, you can log in with:</p>
-                  <p className="text-sm text-blue-700"><strong>Email:</strong> tusha@splitsmart.com</p>
-                  <p className="text-sm text-blue-700"><strong>Password:</strong> Kavish12</p>
-                  <p className="text-xs text-blue-600 mt-2">Or use any email with any password to log in as an existing user.</p>
-                </div>
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
