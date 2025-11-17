@@ -61,6 +61,13 @@ export const groupAPI = {
   delete: (id) => apiCall(`/groups/${id}`, {
     method: 'DELETE',
   }),
+  acceptInvitation: (id, email) => apiCall(`/groups/${id}/accept-invitation`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email }),
+  }),
   // Add function for sending invitation emails
   sendInvitation: (invitationData) => apiCall('/send-invitation-email', {
     method: 'POST',
@@ -88,6 +95,7 @@ export const expenseAPI = {
 // Settlement API functions
 export const settlementAPI = {
   getAll: () => apiCall('/settlements'),
+  getByGroup: (groupId) => apiCall(`/settlements/group/${groupId}`),
   create: (settlementData) => apiCall('/settlements', {
     method: 'POST',
     body: JSON.stringify(settlementData),

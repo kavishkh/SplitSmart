@@ -46,6 +46,32 @@ app.use(express.json());
 // Store connected clients for real-time updates
 let connectedClients = new Set();
 
+// Set up Socket.IO connection handlers
+io.on('connection', (socket) => {
+  console.log('🔌 New client connected:', socket.id);
+  connectedClients.add(socket.id);
+  
+  // Handle subscription requests
+  socket.on('subscribe', (collections) => {
+    console.log('📌 Client subscribed to collections:', collections);
+    socket.join(collections);
+    socket.emit('subscribed', { collections });
+  });
+  
+  // Handle client disconnect
+  socket.on('disconnect', () => {
+    console.log('🔌 Client disconnected:', socket.id);
+    connectedClients.delete(socket.id);
+  });
+});
+
+// Function to emit real-time updates to all connected clients
+const emitRealtimeUpdate = (type, operation, data) => {
+  const updateData = { type, operation, data };
+  console.log('📡 Emitting real-time update:', updateData);
+  io.emit('data_update', updateData);
+};
+
 // Create Nodemailer transporter
 const createTransporter = () => {
   try {
@@ -338,6 +364,8 @@ app.post('/api/groups', async (req, res) => {
     const result = await groupsCollection.insertOne(newGroup);
     
     if (result.insertedId) {
+      // Emit real-time update
+      emitRealtimeUpdate('group_change', 'insert', newGroup);
       // Send invitation emails to all members except the creator
       if (transporter && Array.isArray(newGroup.members) && newGroup.members.length > 1) {
         console.log('📧 Sending invitation emails to group members...');
@@ -773,6 +801,345 @@ app.delete('/api/groups/:id', async (req, res) => {
   } catch (error) {
     console.error('Error deleting group:', error);
     res.status(500).json({ error: 'Failed to delete group' });
+  }
+});
+
+// Expense routes
+// GET route for fetching all expenses
+app.get('/api/expenses', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Expenses data is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const expensesCollection = db.collection('expenses');
+    const expenses = await expensesCollection.find({}).toArray();
+    res.json(expenses);
+  } catch (error) {
+    console.error('Error fetching expenses:', error);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// GET route for fetching expenses by group
+app.get('/api/expenses/group/:groupId', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Expenses data is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { groupId } = req.params;
+    
+    const expensesCollection = db.collection('expenses');
+    const expenses = await expensesCollection.find({ groupId }).toArray();
+    res.json(expenses);
+  } catch (error) {
+    console.error('Error fetching expenses by group:', error);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// POST route for creating expenses
+app.post('/api/expenses', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Expense creation is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const expenseData = req.body;
+    
+    // Validate required fields
+    if (!expenseData.description || !expenseData.amount || !expenseData.groupId || !expenseData.paidBy || !expenseData.splitBetween) {
+      return res.status(400).json({ error: 'Description, amount, groupId, paidBy, and splitBetween are required' });
+    }
+    
+    const expensesCollection = db.collection('expenses');
+    
+    // Add timestamps and default values
+    const newExpense = {
+      id: expenseData.id || `expense-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      description: expenseData.description,
+      amount: parseFloat(expenseData.amount),
+      category: expenseData.category || 'other',
+      groupId: expenseData.groupId,
+      paidBy: expenseData.paidBy,
+      splitBetween: Array.isArray(expenseData.splitBetween) ? expenseData.splitBetween : [expenseData.splitBetween],
+      date: expenseData.date || new Date().toISOString(),
+      createdAt: expenseData.createdAt || new Date().toISOString(),
+      updatedAt: expenseData.updatedAt || new Date().toISOString(),
+      createdBy: expenseData.createdBy || expenseData.paidBy,
+      settled: expenseData.settled !== undefined ? expenseData.settled : false
+    };
+    
+    // Insert expense into database
+    const result = await expensesCollection.insertOne(newExpense);
+    
+    if (result.insertedId) {
+      // Emit real-time update
+      emitRealtimeUpdate('expense_change', 'insert', newExpense);
+      
+      res.status(201).json(newExpense);
+    } else {
+      res.status(500).json({ error: 'Failed to create expense' });
+    }
+  } catch (error) {
+    console.error('Error creating expense:', error);
+    res.status(500).json({ error: 'Failed to create expense' });
+  }
+});
+
+// PUT route for updating expenses
+app.put('/api/expenses/:id', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Expense update is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { id } = req.params;
+    const expenseData = req.body;
+    
+    const expensesCollection = db.collection('expenses');
+    
+    // Update timestamps
+    const updatedExpense = {
+      ...expenseData,
+      updatedAt: new Date().toISOString()
+    };
+    
+    // Update expense in database
+    const result = await expensesCollection.updateOne(
+      { id },
+      { $set: updatedExpense }
+    );
+    
+    if (result.modifiedCount > 0) {
+      // Fetch the updated expense to emit it
+      const updatedDoc = await expensesCollection.findOne({ id });
+      // Emit real-time update
+      emitRealtimeUpdate('expense_change', 'update', updatedDoc);
+      
+      res.json(updatedDoc);
+    } else {
+      res.status(404).json({ error: 'Expense not found' });
+    }
+  } catch (error) {
+    console.error('Error updating expense:', error);
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// DELETE route for deleting expenses
+app.delete('/api/expenses/:id', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Expense deletion is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { id } = req.params;
+    
+    const expensesCollection = db.collection('expenses');
+    
+    // Find the expense before deleting to emit it
+    const expenseToDelete = await expensesCollection.findOne({ id });
+    
+    // Delete expense from database
+    const result = await expensesCollection.deleteOne({ id });
+    
+    if (result.deletedCount > 0) {
+      // Emit real-time update
+      emitRealtimeUpdate('expense_change', 'delete', expenseToDelete);
+      
+      res.json({ message: 'Expense deleted successfully' });
+    } else {
+      res.status(404).json({ error: 'Expense not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting expense:', error);
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
+});
+
+// Settlement routes
+// GET route for fetching all settlements
+app.get('/api/settlements', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Settlements data is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const settlementsCollection = db.collection('settlements');
+    const settlements = await settlementsCollection.find({}).toArray();
+    res.json(settlements);
+  } catch (error) {
+    console.error('Error fetching settlements:', error);
+    res.status(500).json({ error: 'Failed to fetch settlements' });
+  }
+});
+
+// GET route for fetching settlements by group
+app.get('/api/settlements/group/:groupId', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Settlements data is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { groupId } = req.params;
+    
+    const settlementsCollection = db.collection('settlements');
+    const settlements = await settlementsCollection.find({ groupId }).toArray();
+    res.json(settlements);
+  } catch (error) {
+    console.error('Error fetching settlements by group:', error);
+    res.status(500).json({ error: 'Failed to fetch settlements' });
+  }
+});
+
+// POST route for creating settlements
+app.post('/api/settlements', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Settlement creation is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const settlementData = req.body;
+    
+    // Validate required fields
+    if (!settlementData.groupId || !settlementData.fromMember || !settlementData.toMember || !settlementData.amount) {
+      return res.status(400).json({ error: 'groupId, fromMember, toMember, and amount are required' });
+    }
+    
+    const settlementsCollection = db.collection('settlements');
+    
+    // Add timestamps and default values
+    const newSettlement = {
+      id: settlementData.id || `settlement-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      groupId: settlementData.groupId,
+      groupName: settlementData.groupName || 'Unnamed Group',
+      fromMember: settlementData.fromMember,
+      fromMemberName: settlementData.fromMemberName || 'Unknown',
+      toMember: settlementData.toMember,
+      toMemberName: settlementData.toMemberName || 'Unknown',
+      amount: parseFloat(settlementData.amount),
+      description: settlementData.description || '',
+      date: settlementData.date || new Date().toISOString(),
+      createdAt: settlementData.createdAt || new Date().toISOString(),
+      updatedAt: settlementData.updatedAt || new Date().toISOString(),
+      confirmed: settlementData.confirmed !== undefined ? settlementData.confirmed : false
+    };
+    
+    // Insert settlement into database
+    const result = await settlementsCollection.insertOne(newSettlement);
+    
+    if (result.insertedId) {
+      // Emit real-time update
+      emitRealtimeUpdate('settlement_change', 'insert', newSettlement);
+      
+      res.status(201).json(newSettlement);
+    } else {
+      res.status(500).json({ error: 'Failed to create settlement' });
+    }
+  } catch (error) {
+    console.error('Error creating settlement:', error);
+    res.status(500).json({ error: 'Failed to create settlement' });
+  }
+});
+
+// PATCH route for confirming settlements
+app.patch('/api/settlements/:id/confirm', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Settlement confirmation is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { id } = req.params;
+    
+    const settlementsCollection = db.collection('settlements');
+    
+    // Update settlement in database
+    const result = await settlementsCollection.updateOne(
+      { id },
+      { 
+        $set: { 
+          confirmed: true,
+          updatedAt: new Date().toISOString()
+        }
+      }
+    );
+    
+    if (result.modifiedCount > 0) {
+      // Fetch the updated settlement to emit it
+      const updatedSettlement = await settlementsCollection.findOne({ id });
+      // Emit real-time update
+      emitRealtimeUpdate('settlement_change', 'update', updatedSettlement);
+      
+      res.json(updatedSettlement);
+    } else {
+      res.status(404).json({ error: 'Settlement not found' });
+    }
+  } catch (error) {
+    console.error('Error confirming settlement:', error);
+    res.status(500).json({ error: 'Failed to confirm settlement' });
+  }
+});
+
+// DELETE route for deleting settlements
+app.delete('/api/settlements/:id', async (req, res) => {
+  try {
+    if (!isDatabaseAvailable() || !db) {
+      return res.status(503).json({ 
+        error: 'Database not connected',
+        message: 'Settlement deletion is temporarily unavailable due to database connectivity issues.'
+      });
+    }
+    
+    const { id } = req.params;
+    
+    const settlementsCollection = db.collection('settlements');
+    
+    // Find the settlement before deleting to emit it
+    const settlementToDelete = await settlementsCollection.findOne({ id });
+    
+    // Delete settlement from database
+    const result = await settlementsCollection.deleteOne({ id });
+    
+    if (result.deletedCount > 0) {
+      // Emit real-time update
+      emitRealtimeUpdate('settlement_change', 'delete', settlementToDelete);
+      
+      res.json({ message: 'Settlement deleted successfully' });
+    } else {
+      res.status(404).json({ error: 'Settlement not found' });
+    }
+  } catch (error) {
+    console.error('Error deleting settlement:', error);
+    res.status(500).json({ error: 'Failed to delete settlement' });
   }
 });
 

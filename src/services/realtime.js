@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 
 // Create Socket.IO client connection
-const SOCKET_URL = 'http://localhost:5001';
+const SOCKET_URL = 'http://localhost:40001';
 
 class RealtimeService {
   constructor() {

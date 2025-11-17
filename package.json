@@ -21,6 +21,7 @@
     "setup:supabase:complete": "node server/scripts/runCompleteSetup.js",
     "test:email:setup": "node server/scripts/emailSetupHelper.js",
     "test:mongodb": "node server/scripts/testMongoDB.js",
+    "test:socketio": "node server/scripts/testSocketIO.js",
     "delete:test-groups": "node server/scripts/deleteTestGroups.js",
     "delete:all-groups": "node server/scripts/deleteAllGroups.js",
     "list:groups": "node server/scripts/listAllGroups.js"

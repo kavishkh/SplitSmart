@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useGroups } from "@/hooks/use-groups";
 import { useUser } from "@/hooks/use-user";
 import { toast } from "sonner";
+import { groupAPI } from "@/services/api.js";
 
 const AcceptInvitation = () => {
   const [searchParams] = useSearchParams();
@@ -18,7 +19,8 @@ const AcceptInvitation = () => {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const groupId = searchParams.get("groupId");
+  // Support both 'groupId' and 'group' for backward compatibility
+  const groupId = searchParams.get("groupId") || searchParams.get("group");
   const email = searchParams.get("email");
 
   useEffect(() => {
@@ -29,10 +31,35 @@ const AcceptInvitation = () => {
           return;
         }
 
-        // Refresh groups to get the latest data
-        await refreshGroups();
+        // First try to get from local cache
+        let foundGroup = getGroupById(groupId);
         
-        const foundGroup = getGroupById(groupId);
+        // If not found in cache, fetch directly from API
+        if (!foundGroup) {
+          console.log("Group not in cache, fetching from API...");
+          const dbGroup = await groupAPI.getById(groupId);
+          
+          // Transform the group data to match our interface if needed
+          if (dbGroup) {
+            foundGroup = {
+              id: dbGroup?.id || groupId,
+              name: dbGroup?.name || 'Unnamed Group',
+              description: dbGroup?.description || '',
+              members: Array.isArray(dbGroup?.members) ? dbGroup.members : [],
+              totalSpent: dbGroup?.totalAmount || dbGroup?.totalSpent || 0,
+              yourBalance: dbGroup?.yourBalance || 0,
+              lastActivity: new Date(dbGroup?.updatedAt || dbGroup?.createdAt || Date.now()).toLocaleDateString(),
+              color: dbGroup?.color || 'from-blue-500 to-purple-600',
+              createdAt: new Date(dbGroup?.createdAt || Date.now()),
+              ownerId: dbGroup?.createdBy || dbGroup?.ownerId || 'unknown'
+            };
+          }
+        } else {
+          // Refresh groups to get the latest data
+          await refreshGroups();
+          foundGroup = getGroupById(groupId);
+        }
+
         if (!foundGroup) {
           setError("Group not found");
           return;
@@ -61,6 +88,7 @@ const AcceptInvitation = () => {
 
         setGroup(foundGroup);
       } catch (err) {
+        console.error("Error fetching group:", err);
         setError("Failed to load invitation information");
       } finally {
         setIsLoading(false);
@@ -75,20 +103,26 @@ const AcceptInvitation = () => {
 
     setIsAccepting(true);
     try {
-      // In a real implementation, you would call an API endpoint to accept the invitation
-      // For now, we'll simulate this with a toast message
-      toast.success(`You've accepted the invitation to "${group.name}"!`);
-      setSuccess(true);
-      
-      // Refresh groups to show updated status
-      await refreshGroups();
-      
-      // Navigate to the group after a short delay
-      setTimeout(() => {
-        navigate(`/groups/${group.id}`);
-      }, 2000);
-    } catch (error) {
-      toast.error("Failed to accept invitation");
+      // Call API to accept the invitation
+      const result = await groupAPI.acceptInvitation(group.id, email);
+
+      if (result.success) {
+        toast.success(`You've accepted the invitation to "${group.name}"!`);
+        setSuccess(true);
+        
+        // Refresh groups to show updated status
+        await refreshGroups();
+        
+        // Navigate to the group after a short delay
+        setTimeout(() => {
+          navigate(`/groups/${group.id}`);
+        }, 2000);
+      } else {
+        throw new Error(result.error || 'Failed to accept invitation');
+      }
+    } catch (error: any) {
+      console.error('Error accepting invitation:', error);
+      toast.error(error.message || "Failed to accept invitation");
     } finally {
       setIsAccepting(false);
     }

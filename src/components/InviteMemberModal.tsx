@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { UserPlus, Copy, Mail, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,11 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, owne
   const [isCopied, setIsCopied] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const { currentUser } = useUser();
-
-  // Generate invitation link
-  const inviteLink = `${window.location.origin}/join-group/${groupId}`;
+  
+  // Generate invite link using useMemo so it's recalculated when dependencies change
+  const inviteLink = useMemo(() => {
+    return `${window.location.origin}/accept?groupId=${groupId}&email=${encodeURIComponent(email || '')}`;
+  }, [groupId, email]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(inviteLink).then(() => {
@@ -57,7 +59,7 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, owne
 
     setIsSending(true);
     try {
-      // Send invitation email via API
+      // Send invitation email via API (using the same inviteLink generated above)
       await groupAPI.sendInvitation({
         to: email,
         memberName: email.split('@')[0], // Use part before @ as name
