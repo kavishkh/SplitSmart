@@ -299,10 +299,6 @@ const GroupDetail = () => {
                 <span className="hidden sm:inline">Google Pay</span>
               </Button>
             </Link>
-            <Button variant="outline" size="sm" onClick={handleShareGroup} className="h-8 px-3">
-              <Share2 className="h-3 w-3 mr-1" />
-              <span className="hidden sm:inline">Share</span>
-            </Button>
             <Button variant="outline" size="sm" onClick={() => setShowInviteMember(true)} className="h-8 px-3">
               <UserPlus className="h-3 w-3 mr-1" />
               <span className="hidden sm:inline">Invite</span>

@@ -80,35 +80,32 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, owne
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && email) {
+    if (e.key === 'Enter' && email && !isSending) {
       handleSendInvite();
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[90vw] max-w-[95vw] w-full md:max-w-md mx-auto dialog-content">
-        <DialogHeader className="dialog-header">
-          <DialogTitle className="flex items-center space-x-2 text-lg dialog-title">
-            <div className="w-6 h-6 bg-gradient-primary rounded-md flex items-center justify-center">
-              <UserPlus className="h-3 w-3 text-primary-foreground" />
-            </div>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center space-x-2">
+            <UserPlus className="h-5 w-5" />
             <span>Invite Members</span>
           </DialogTitle>
-          <DialogDescription className="text-sm">
-            Invite members to join "{groupName}"
+          <DialogDescription>
+            Invite members to join "{groupName}" group via email
           </DialogDescription>
         </DialogHeader>
-
+        
         <div className="space-y-4 py-2">
-          {/* Email Invitation */}
+          {/* Email Input */}
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-sm font-medium">Send via Email</Label>
+            <Label className="text-sm font-medium">Invite via Email</Label>
             <div className="flex space-x-2">
               <Input
-                id="email"
-                placeholder="friend@example.com"
                 type="email"
+                placeholder="Enter email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 onKeyPress={handleKeyPress}
@@ -128,32 +125,6 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, owne
             </div>
             <p className="text-xs text-muted-foreground">
               We'll send an email invitation to join the group
-            </p>
-          </div>
-
-          {/* Share Link */}
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Share Invite Link</Label>
-            <div className="flex space-x-2">
-              <Input
-                value={inviteLink}
-                readOnly
-                className="py-5 input-field flex-1 text-xs"
-              />
-              <Button 
-                onClick={handleCopyLink}
-                variant="outline"
-                className="py-5 px-4 button-secondary"
-              >
-                {isCopied ? (
-                  <Check className="h-4 w-4 text-success" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Anyone with this link can join the group
             </p>
           </div>
 
