@@ -93,12 +93,44 @@ export const groupAPI = {
 
 // Expense API functions
 export const expenseAPI = {
-  getAll: () => apiCall('/expenses'),
+  getAll: () => {
+    // Get user ID from localStorage for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const storedUser = localStorage.getItem("user");
+    let userId = 'user-tusha'; // Default demo user
+    
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        userId = user.id || userId;
+      } catch (e) {
+        console.warn('Failed to parse user data from localStorage');
+      }
+    }
+    
+    return apiCall(`/expenses?userId=${encodeURIComponent(userId)}`);
+  },
   create: (expenseData) => apiCall('/expenses', {
     method: 'POST',
     body: JSON.stringify(expenseData),
   }),
-  getByGroup: (groupId) => apiCall(`/expenses/group/${groupId}`),
+  getByGroup: (groupId) => {
+    // Get user ID from localStorage for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const storedUser = localStorage.getItem("user");
+    let userId = 'user-tusha'; // Default demo user
+    
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        userId = user.id || userId;
+      } catch (e) {
+        console.warn('Failed to parse user data from localStorage');
+      }
+    }
+    
+    return apiCall(`/expenses/group/${groupId}?userId=${encodeURIComponent(userId)}`);
+  },
   update: (id, expenseData) => apiCall(`/expenses/${id}`, {
     method: 'PUT',
     body: JSON.stringify(expenseData),
@@ -110,8 +142,40 @@ export const expenseAPI = {
 
 // Settlement API functions
 export const settlementAPI = {
-  getAll: () => apiCall('/settlements'),
-  getByGroup: (groupId) => apiCall(`/settlements/group/${groupId}`),
+  getAll: () => {
+    // Get user ID from localStorage for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const storedUser = localStorage.getItem("user");
+    let userId = 'user-tusha'; // Default demo user
+    
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        userId = user.id || userId;
+      } catch (e) {
+        console.warn('Failed to parse user data from localStorage');
+      }
+    }
+    
+    return apiCall(`/settlements?userId=${encodeURIComponent(userId)}`);
+  },
+  getByGroup: (groupId) => {
+    // Get user ID from localStorage for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const storedUser = localStorage.getItem("user");
+    let userId = 'user-tusha'; // Default demo user
+    
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        userId = user.id || userId;
+      } catch (e) {
+        console.warn('Failed to parse user data from localStorage');
+      }
+    }
+    
+    return apiCall(`/settlements/group/${groupId}?userId=${encodeURIComponent(userId)}`);
+  },
   create: (settlementData) => apiCall('/settlements', {
     method: 'POST',
     body: JSON.stringify(settlementData),

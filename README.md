@@ -4,12 +4,15 @@ SplitSmart is a modern expense sharing application built with React, TypeScript,
 
 ## Features
 
-- **Group Management**: Create and manage expense groups
+- **Group Management**: Create and manage expense groups with enhanced security
 - **Expense Tracking**: Add and track shared expenses
 - **Smart Splitting**: Automatic calculation of who owes whom
 - **Real-time Updates**: Live updates across all devices
 - **Payment Reminders**: Automated email reminders for pending payments
 - **Settlements**: Easy settlement of debts between group members
+- **User-based Group Visibility**: Groups are now isolated to their owners and members
+- **User-based Expense Visibility**: Expenses are filtered based on user involvement
+- **User-based Settlement Visibility**: Settlements are filtered based on user participation
 - **Responsive Design**: Works on desktop and mobile devices
 
 ## Tech Stack
@@ -83,11 +86,25 @@ The application comes with a default user for testing:
 - Username: tusha
 - Password: Kavish12
 
+### Security Enhancements
+
+#### Data Isolation
+All data is now properly isolated:
+- **Groups**: Users can only see groups they created or are members of
+- **Expenses**: Users can only see expenses they created, paid for, or are involved in splitting
+- **Settlements**: Users can only see settlements where they are the sender or receiver
+- Enhanced data privacy and security across all data types
+- Backend filtering prevents unauthorized access to any user data
+
 ## API Endpoints
 
 - `GET /api/health` - Health check
 - `GET /api/users` - Get all users
-- `GET /api/groups` - Get all groups
+- `GET /api/groups?userId={userId}` - Get groups for a specific user (filtered by ownership/membership)
+- `GET /api/expenses?userId={userId}` - Get expenses for a specific user (filtered by involvement)
+- `GET /api/expenses/group/:groupId?userId={userId}` - Get expenses for a group filtered by user involvement
+- `GET /api/settlements?userId={userId}` - Get settlements for a specific user (filtered by participation)
+- `GET /api/settlements/group/:groupId?userId={userId}` - Get settlements for a group filtered by user participation
 - `POST /api/send-invitation-email` - Send group invitation email
 - `POST /api/resend-email` - Resend email
 
@@ -98,6 +115,8 @@ If you encounter issues:
 1. **Database Connection**: Verify your MongoDB URI is correct
 2. **Email Sending**: Check your email configuration and credentials
 3. **Port Conflicts**: Ensure ports 8081 and 5005 are available
+4. **Group Visibility**: Make sure the userId parameter is correctly passed to group API endpoints
+5. **Expense/Settlement Visibility**: Ensure userId parameter is correctly passed to all data API endpoints
 
 ## License
 

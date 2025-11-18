@@ -113,23 +113,6 @@ const initializeDatabase = async () => {
       db = database;
       console.log('✅ Database connected successfully');
       connectionRetryCount = 0; // Reset retry count on success
-      
-      // Set up change streams for real-time updates
-      // createChangeStream('users', (change) => {
-      //   console.log('User change detected:', change);
-      //   // Broadcast to connected clients
-      //   connectedClients.forEach(clientId => {
-      //     io.to(clientId).emit('userUpdate', change);
-      //   });
-      // });
-      
-      // createChangeStream('groups', (change) => {
-      //   console.log('Group change detected:', change);
-      //   // Broadcast to connected clients
-      //   connectedClients.forEach(clientId => {
-      //     io.to(clientId).emit('groupUpdate', change);
-      //   });
-      // });
     } else {
       console.error('❌ Failed to connect to database');
       
@@ -837,7 +820,20 @@ app.get('/api/expenses', async (req, res) => {
     }
     
     const expensesCollection = db.collection('expenses');
-    const expenses = await expensesCollection.find({}).toArray();
+    
+    // Get user ID from query parameter for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const userId = req.query.userId || 'user-tusha'; // Default to demo user
+    
+    // Find expenses where the user is either the creator or involved in the split
+    const expenses = await expensesCollection.find({
+      $or: [
+        { createdBy: userId }, // Expenses created by the user
+        { paidBy: userId }, // Expenses paid by the user
+        { splitBetween: userId } // Expenses where the user is involved in the split
+      ]
+    }).toArray();
+    
     res.json(expenses);
   } catch (error) {
     console.error('Error fetching expenses:', error);
@@ -857,8 +853,21 @@ app.get('/api/expenses/group/:groupId', async (req, res) => {
     
     const { groupId } = req.params;
     
+    // Get user ID from query parameter for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const userId = req.query.userId || 'user-tusha'; // Default to demo user
+    
     const expensesCollection = db.collection('expenses');
-    const expenses = await expensesCollection.find({ groupId }).toArray();
+    // Find expenses for the group where the user is either the creator or involved in the split
+    const expenses = await expensesCollection.find({
+      groupId: groupId,
+      $or: [
+        { createdBy: userId }, // Expenses created by the user
+        { paidBy: userId }, // Expenses paid by the user
+        { splitBetween: userId } // Expenses where the user is involved in the split
+      ]
+    }).toArray();
+    
     res.json(expenses);
   } catch (error) {
     console.error('Error fetching expenses by group:', error);
@@ -1007,7 +1016,19 @@ app.get('/api/settlements', async (req, res) => {
     }
     
     const settlementsCollection = db.collection('settlements');
-    const settlements = await settlementsCollection.find({}).toArray();
+    
+    // Get user ID from query parameter for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const userId = req.query.userId || 'user-tusha'; // Default to demo user
+    
+    // Find settlements where the user is either the sender or receiver
+    const settlements = await settlementsCollection.find({
+      $or: [
+        { fromMember: userId }, // Settlements where the user is the sender
+        { toMember: userId } // Settlements where the user is the receiver
+      ]
+    }).toArray();
+    
     res.json(settlements);
   } catch (error) {
     console.error('Error fetching settlements:', error);
@@ -1027,8 +1048,20 @@ app.get('/api/settlements/group/:groupId', async (req, res) => {
     
     const { groupId } = req.params;
     
+    // Get user ID from query parameter for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const userId = req.query.userId || 'user-tusha'; // Default to demo user
+    
     const settlementsCollection = db.collection('settlements');
-    const settlements = await settlementsCollection.find({ groupId }).toArray();
+    // Find settlements for the group where the user is either the sender or receiver
+    const settlements = await settlementsCollection.find({
+      groupId: groupId,
+      $or: [
+        { fromMember: userId }, // Settlements where the user is the sender
+        { toMember: userId } // Settlements where the user is the receiver
+      ]
+    }).toArray();
+    
     res.json(settlements);
   } catch (error) {
     console.error('Error fetching settlements by group:', error);
