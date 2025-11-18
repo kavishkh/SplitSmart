@@ -3,41 +3,32 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { connectDatabase, getDatabase, isDatabaseAvailable, closeDatabase } from './config/database.js';
+import { connectDatabase, isDatabaseAvailable, closeDatabase } from './config/database.js';
 import http from 'http';
 import { Server } from 'socket.io';
 import nodemailer from 'nodemailer';
 import bcrypt from 'bcryptjs';
 import { sendGroupInvitationEmail } from './services/emailService.js';
 
-// Get the directory name in ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Load environment variables
-const envPath = path.resolve(__dirname, '../.env');
-dotenv.config({ path: envPath });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 40001;
-
-// Create HTTP server and Socket.IO server
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+  cors: { origin: "*", methods: ["GET", "POST"] }
 });
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Store connected clients
 let connectedClients = new Set();
+let db;
+let connectionRetryCount = 0;
+const MAX_RETRY_ATTEMPTS = 5;
 
-// Socket.IO connection handlers
 io.on('connection', (socket) => {
   console.log('🔌 New client connected:', socket.id);
   connectedClients.add(socket.id);
@@ -54,29 +45,23 @@ io.on('connection', (socket) => {
   });
 });
 
-// Emit real-time updates
 const emitRealtimeUpdate = (type, operation, data) => {
   const updateData = { type, operation, data };
   console.log('📡 Emitting real-time update:', updateData);
   io.emit('data_update', updateData);
 };
 
-// Create Nodemailer transporter
 const createTransporter = () => {
   try {
     if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
       console.warn('⚠️  Email credentials not set. Email service will not work.');
       return null;
     }
-
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST || 'smtp.gmail.com',
       port: parseInt(process.env.SMTP_PORT) || 587,
       secure: process.env.SMTP_SECURE === 'true',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS }
     });
   } catch (error) {
     console.error('❌ Failed to create email transporter:', error);
@@ -85,11 +70,6 @@ const createTransporter = () => {
 };
 
 const transporter = createTransporter();
-
-// Database connection with retry logic
-let db;
-let connectionRetryCount = 0;
-const MAX_RETRY_ATTEMPTS = 5;
 
 const initializeDatabase = async () => {
   try {
@@ -120,11 +100,9 @@ const initializeDatabase = async () => {
   }
 };
 
-// Initialize database
 initializeDatabase();
 
-// Utility function for database availability check
-const checkDbAvailability = (res) => {
+const checkDb = (res) => {
   if (!isDatabaseAvailable() || !db) {
     return res.status(503).json({ 
       error: 'Database not connected',
@@ -134,39 +112,23 @@ const checkDbAvailability = (res) => {
   return null;
 };
 
-// Utility function for user-based filtering
-const createUserFilter = (userId) => ({
-  $or: [
-    { createdBy: userId },
-    { 'members.id': userId }
-  ]
+const userFilter = (userId) => ({
+  $or: [{ createdBy: userId }, { 'members.id': userId }]
 });
 
-const createExpenseFilter = (userId) => ({
-  $or: [
-    { createdBy: userId },
-    { paidBy: userId },
-    { splitBetween: userId }
-  ]
+const expenseFilter = (userId) => ({
+  $or: [{ createdBy: userId }, { paidBy: userId }, { splitBetween: userId }]
 });
 
-const createSettlementFilter = (userId) => ({
-  $or: [
-    { fromMember: userId },
-    { toMember: userId }
-  ]
+const settlementFilter = (userId) => ({
+  $or: [{ fromMember: userId }, { toMember: userId }]
 });
 
-// Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
-  res.status(500).json({ 
-    error: 'Internal server error',
-    message: 'An unexpected error occurred'
-  });
+  res.status(500).json({ error: 'Internal server error', message: 'An unexpected error occurred' });
 });
 
-// Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -176,9 +138,8 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// User routes
 app.get('/api/users', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -191,13 +152,12 @@ app.get('/api/users', async (req, res) => {
 });
 
 app.post('/api/users', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
     const userData = req.body;
     
-    // Validation
     if (!userData.name || !userData.email || !userData.password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
     }
@@ -213,7 +173,6 @@ app.post('/api/users', async (req, res) => {
       return res.status(409).json({ error: 'User already exists with this email' });
     }
     
-    // Create user
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(userData.password, saltRounds);
     const initials = userData.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
@@ -242,7 +201,7 @@ app.post('/api/users', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -281,14 +240,13 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// Group routes
 app.get('/api/groups', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
     const userId = req.query.userId || 'user-tusha';
-    const groups = await db.collection('groups').find(createUserFilter(userId)).toArray();
+    const groups = await db.collection('groups').find(userFilter(userId)).toArray();
     res.json(groups);
   } catch (error) {
     console.error('Error fetching groups:', error);
@@ -297,7 +255,7 @@ app.get('/api/groups', async (req, res) => {
 });
 
 app.post('/api/groups', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -326,7 +284,6 @@ app.post('/api/groups', async (req, res) => {
     if (result.insertedId) {
       emitRealtimeUpdate('group_change', 'insert', newGroup);
       
-      // Send invitation emails
       if (transporter && Array.isArray(newGroup.members) && newGroup.members.length > 1) {
         console.log('📧 Sending invitation emails to group members...');
         
@@ -382,7 +339,7 @@ app.post('/api/groups', async (req, res) => {
 });
 
 app.delete('/api/groups/:id', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -402,10 +359,8 @@ app.delete('/api/groups/:id', async (req, res) => {
     const result = await groupsCollection.deleteOne({ id });
     
     if (result.deletedCount > 0) {
-      // Delete associated expenses and settlements
       await db.collection('expenses').deleteMany({ groupId: id });
       await db.collection('settlements').deleteMany({ groupId: id });
-      
       res.status(204).send();
     } else {
       res.status(500).json({ error: 'Failed to delete group' });
@@ -416,8 +371,7 @@ app.delete('/api/groups/:id', async (req, res) => {
   }
 });
 
-// Email routes
-const sendEmailHandler = async (req, res, getEmailOptions) => {
+const sendEmail = async (req, res, getEmailOptions) => {
   if (!transporter) {
     if (process.env.NODE_ENV !== 'production' && process.env.USE_REAL_EMAILS !== 'true') {
       return res.json({ 
@@ -434,9 +388,7 @@ const sendEmailHandler = async (req, res, getEmailOptions) => {
   try {
     const emailOptions = getEmailOptions(req.body);
     const info = await transporter.sendMail(emailOptions);
-    
     console.log('📧 Email sent successfully:', info.messageId);
-    
     res.json({ 
       success: true, 
       message: 'Email sent successfully',
@@ -478,27 +430,19 @@ app.post('/api/send-invite', async (req, res) => {
         <html>
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>SplitSmart Group Invitation</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            .container { max-width: 600px; margin: 0 auto; }
-            .header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 30px; text-align: center; }
-            .content { padding: 30px; background: #ffffff; }
-            .button { display: inline-block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; }
-          </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
+          <div>
+            <div>
               <h1>Group Invitation</h1>
             </div>
-            <div class="content">
+            <div>
               <p>Hi ${data.memberName},</p>
               <p>You've been invited to join <strong>"${data.groupName}"</strong> on SplitSmart by ${data.inviterName}.</p>
-              <a href="${invitationLink}" class="button">Accept Invitation</a>
-              <p>Or copy and paste this link in your browser:</p>
-              <p style="word-break: break-all;">${invitationLink}</p>
+              <a href="${invitationLink}">Accept Invitation</a>
+              <p>Or copy and paste this link:</p>
+              <p>${invitationLink}</p>
             </div>
           </div>
         </body>
@@ -517,7 +461,7 @@ app.post('/api/send-invite', async (req, res) => {
     };
   };
   
-  sendEmailHandler(req, res, getEmailOptions);
+  sendEmail(req, res, getEmailOptions);
 });
 
 app.post('/api/send-invitation-email', async (req, res) => {
@@ -548,27 +492,19 @@ app.post('/api/send-invitation-email', async (req, res) => {
         <html>
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>SplitSmart Group Invitation</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            .container { max-width: 600px; margin: 0 auto; }
-            .header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 30px; text-align: center; }
-            .content { padding: 30px; background: #ffffff; }
-            .button { display: inline-block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; }
-          </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
+          <div>
+            <div>
               <h1>Group Invitation</h1>
             </div>
-            <div class="content">
+            <div>
               <p>Hi ${data.memberName},</p>
               <p>You've been invited to join <strong>"${data.groupName}"</strong> on SplitSmart by ${data.inviterName}.</p>
-              <a href="${finalInvitationLink}" class="button">Accept Invitation</a>
-              <p>Or copy and paste this link in your browser:</p>
-              <p style="word-break: break-all;">${finalInvitationLink}</p>
+              <a href="${finalInvitationLink}">Accept Invitation</a>
+              <p>Or copy and paste this link:</p>
+              <p>${finalInvitationLink}</p>
             </div>
           </div>
         </body>
@@ -587,7 +523,7 @@ app.post('/api/send-invitation-email', async (req, res) => {
     };
   };
   
-  sendEmailHandler(req, res, getEmailOptions);
+  sendEmail(req, res, getEmailOptions);
 });
 
 app.post('/api/send-reminder', async (req, res) => {
@@ -617,29 +553,20 @@ app.post('/api/send-reminder', async (req, res) => {
         <html>
         <head>
           <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>SplitSmart Payment Reminder</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-            .container { max-width: 600px; margin: 0 auto; }
-            .header { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 30px; text-align: center; }
-            .content { padding: 30px; background: #ffffff; }
-            .amount { font-size: 28px; font-weight: 700; color: #e53e3e; }
-            .button { display: inline-block; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: 600; }
-          </style>
         </head>
         <body>
-          <div class="container">
-            <div class="header">
+          <div>
+            <div>
               <h1>Payment Reminder</h1>
             </div>
-            <div class="content">
+            <div>
               <p>Hi ${data.memberName},</p>
               <p>This is a friendly reminder that you have a pending payment in the group <strong>"${data.groupName}"</strong> on SplitSmart.</p>
-              <p class="amount">${data.amountOwed}</p>
-              <a href="${paymentLink}" class="button">Make Payment</a>
-              <p>Or copy and paste this link in your browser:</p>
-              <p style="word-break: break-all;">${paymentLink}</p>
+              <p>${data.amountOwed}</p>
+              <a href="${paymentLink}">Make Payment</a>
+              <p>Or copy and paste this link:</p>
+              <p>${paymentLink}</p>
             </div>
           </div>
         </body>
@@ -661,17 +588,16 @@ app.post('/api/send-reminder', async (req, res) => {
     };
   };
   
-  sendEmailHandler(req, res, getEmailOptions);
+  sendEmail(req, res, getEmailOptions);
 });
 
-// Expense routes
 app.get('/api/expenses', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
     const userId = req.query.userId || 'user-tusha';
-    const expenses = await db.collection('expenses').find(createExpenseFilter(userId)).toArray();
+    const expenses = await db.collection('expenses').find(expenseFilter(userId)).toArray();
     res.json(expenses);
   } catch (error) {
     console.error('Error fetching expenses:', error);
@@ -680,7 +606,7 @@ app.get('/api/expenses', async (req, res) => {
 });
 
 app.get('/api/expenses/group/:groupId', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -689,7 +615,7 @@ app.get('/api/expenses/group/:groupId', async (req, res) => {
     
     const expenses = await db.collection('expenses').find({
       groupId: groupId,
-      ...createExpenseFilter(userId)
+      ...expenseFilter(userId)
     }).toArray();
     
     res.json(expenses);
@@ -700,7 +626,7 @@ app.get('/api/expenses/group/:groupId', async (req, res) => {
 });
 
 app.post('/api/expenses', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -740,7 +666,7 @@ app.post('/api/expenses', async (req, res) => {
 });
 
 app.put('/api/expenses/:id', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -771,7 +697,7 @@ app.put('/api/expenses/:id', async (req, res) => {
 });
 
 app.delete('/api/expenses/:id', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -792,14 +718,13 @@ app.delete('/api/expenses/:id', async (req, res) => {
   }
 });
 
-// Settlement routes
 app.get('/api/settlements', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
     const userId = req.query.userId || 'user-tusha';
-    const settlements = await db.collection('settlements').find(createSettlementFilter(userId)).toArray();
+    const settlements = await db.collection('settlements').find(settlementFilter(userId)).toArray();
     res.json(settlements);
   } catch (error) {
     console.error('Error fetching settlements:', error);
@@ -808,7 +733,7 @@ app.get('/api/settlements', async (req, res) => {
 });
 
 app.get('/api/settlements/group/:groupId', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -817,7 +742,7 @@ app.get('/api/settlements/group/:groupId', async (req, res) => {
     
     const settlements = await db.collection('settlements').find({
       groupId: groupId,
-      ...createSettlementFilter(userId)
+      ...settlementFilter(userId)
     }).toArray();
     
     res.json(settlements);
@@ -828,7 +753,7 @@ app.get('/api/settlements/group/:groupId', async (req, res) => {
 });
 
 app.post('/api/settlements', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -869,7 +794,7 @@ app.post('/api/settlements', async (req, res) => {
 });
 
 app.patch('/api/settlements/:id/confirm', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -899,7 +824,7 @@ app.patch('/api/settlements/:id/confirm', async (req, res) => {
 });
 
 app.delete('/api/settlements/:id', async (req, res) => {
-  const dbError = checkDbAvailability(res);
+  const dbError = checkDb(res);
   if (dbError) return dbError;
   
   try {
@@ -920,7 +845,6 @@ app.delete('/api/settlements/:id', async (req, res) => {
   }
 });
 
-// Status endpoints
 app.get('/api/db-status', (req, res) => {
   const connected = isDatabaseAvailable();
   res.json({ 
@@ -932,22 +856,18 @@ app.get('/api/db-status', (req, res) => {
   });
 });
 
-// Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../dist')));
-  
   app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '../dist/index.html'));
   });
 }
 
-// Start server
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
 });
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
   console.log('🛑 Shutting down server...');
   await closeDatabase();
