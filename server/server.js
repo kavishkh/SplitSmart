@@ -322,7 +322,23 @@ app.get('/api/groups', async (req, res) => {
     }
     
     const groupsCollection = db.collection('groups');
-    const groups = await groupsCollection.find({}).toArray();
+    
+    // For demo purposes, we'll filter groups to only show those created by the current user
+    // In a real implementation, you would use proper authentication (JWT, sessions, etc.)
+    // and get the user ID from the authenticated request
+    
+    // Get user ID from query parameter for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const userId = req.query.userId || 'user-tusha'; // Default to demo user
+    
+    // Find groups where the user is either the owner or a member
+    const groups = await groupsCollection.find({
+      $or: [
+        { createdBy: userId }, // Groups created by the user
+        { 'members.id': userId } // Groups where the user is a member
+      ]
+    }).toArray();
+    
     res.json(groups);
   } catch (error) {
     console.error('Error fetching groups:', error);
@@ -345,6 +361,11 @@ app.post('/api/groups', async (req, res) => {
     // Validate required fields
     if (!groupData.name) {
       return res.status(400).json({ error: 'Group name is required' });
+    }
+    
+    // Ensure createdBy field is set
+    if (!groupData.createdBy) {
+      return res.status(400).json({ error: 'Group creator information is required' });
     }
     
     const groupsCollection = db.collection('groups');

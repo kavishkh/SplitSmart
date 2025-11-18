@@ -48,7 +48,23 @@ export const userAPI = {
 
 // Group API functions
 export const groupAPI = {
-  getAll: () => apiCall('/groups'),
+  getAll: () => {
+    // Get user ID from localStorage for demo purposes
+    // In production, this should come from authenticated session/JWT
+    const storedUser = localStorage.getItem("user");
+    let userId = 'user-tusha'; // Default demo user
+    
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        userId = user.id || userId;
+      } catch (e) {
+        console.warn('Failed to parse user data from localStorage');
+      }
+    }
+    
+    return apiCall(`/groups?userId=${encodeURIComponent(userId)}`);
+  },
   create: (groupData) => apiCall('/groups', {
     method: 'POST',
     body: JSON.stringify(groupData),
