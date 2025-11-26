@@ -1,7 +1,7 @@
 import { MongoClient } from 'mongodb';
 
 // MongoDB configuration
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://Khanna:Kavish12@splitwiseapp.9r9zryh.mongodb.net/splitwiseApp?retryWrites=true&w=majority';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb+srv://noreplysplitsmart_db_user:splitsmart12@splitsmart.mnshqrq.mongodb.net/';
 const DATABASE_NAME = process.env.DATABASE_NAME || 'splitwiseApp';
 
 let client;
@@ -23,7 +23,7 @@ const connectDatabase = async () => {
       monitorCommands: true,
       serverSelectionTimeoutMS: 10000, // Timeout after 10s instead of 30s
       connectTimeoutMS: 20000, // Connection timeout after 20s
-      maxIdleTimeMS: 30000, // Close connections after 30s of inactivity
+      // Remove the maxIdleTimeMS option which might be causing the connection to close
       retryWrites: true,
       retryReads: true,
       // Add connection pool options

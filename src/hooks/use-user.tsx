@@ -96,8 +96,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signOut = () => {
-    logout();
+  const signOut = async () => {
+    await logout();
   };
 
   return (

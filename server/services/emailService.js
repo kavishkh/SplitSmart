@@ -51,7 +51,11 @@ async function sendEmail({ to, subject, html, text }) {
 /* ---------------------------------------
     1️⃣ GROUP INVITATION EMAIL
 ---------------------------------------- */
-export function sendGroupInvitationEmail({ to, memberName, groupName, inviterName, invitationLink }) {
+export function sendGroupInvitationEmail({ to, memberName, groupName, inviterName, groupId }) {
+  // Use environment variable for frontend URL or default to localhost for development
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+  const invitationLink = `${frontendUrl}/accept?groupId=${encodeURIComponent(groupId)}&email=${encodeURIComponent(to)}`;
+  
   const html = wrapEmail({
     to,
     title: "SplitSmart Group Invitation",

@@ -59,13 +59,13 @@ export const InviteMemberModal = ({ open, onOpenChange, groupId, groupName, owne
 
     setIsSending(true);
     try {
-      // Send invitation email via API (using the same inviteLink generated above)
+      // Send invitation email via API
       await groupAPI.sendInvitation({
         to: email,
         memberName: email.split('@')[0], // Use part before @ as name
         groupName: groupName,
         inviterName: currentUser?.name || 'A SplitSmart user',
-        invitationLink: inviteLink
+        groupId: groupId
       });
 
       toast.success(`Invitation sent to ${email}!`);

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:40001/api';
+const API_BASE_URL = '/api';
 
 // Generic API call function with better error handling
 const apiCall = async (endpoint, options = {}) => {
@@ -16,7 +16,8 @@ const apiCall = async (endpoint, options = {}) => {
       // Try to parse error response, but handle case where there's no body
       let errorData;
       try {
-        errorData = await response.json();
+        const errorText = await response.text();
+        errorData = errorText ? JSON.parse(errorText) : { error: `HTTP error! status: ${response.status}` };
       } catch {
         errorData = { error: `HTTP error! status: ${response.status}` };
       }
@@ -28,7 +29,26 @@ const apiCall = async (endpoint, options = {}) => {
       return null; // Return null for successful delete operations
     }
 
-    const data = await response.json();
+    // Check if response has content before trying to parse JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error('Server returned non-JSON response');
+    }
+
+    const text = await response.text();
+    if (!text) {
+      throw new Error('Server returned empty response');
+    }
+
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      console.error('Response text:', text);
+      throw new Error('Invalid JSON response from server');
+    }
+
     return data;
   } catch (error) {
     console.error('API call failed:', error);
@@ -85,7 +105,7 @@ export const groupAPI = {
     body: JSON.stringify({ email }),
   }),
   // Add function for sending invitation emails
-  sendInvitation: (invitationData) => apiCall('/send-invitation-email', {
+  sendInvitation: (invitationData) => apiCall('/send-invite', {
     method: 'POST',
     body: JSON.stringify(invitationData),
   }),

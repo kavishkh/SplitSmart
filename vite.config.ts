@@ -7,10 +7,15 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8081, // Use port 8081 consistently
+    port: 5173, // Use port 5173 for frontend
     proxy: {
       '/api': {
-        target: 'http://localhost:40000',
+        target: 'http://localhost:3000', // Match backend port
+        changeOrigin: true,
+        secure: false,
+      },
+      '/auth': {
+        target: 'http://localhost:3000', // Proxy Google OAuth routes to backend
         changeOrigin: true,
         secure: false,
       }

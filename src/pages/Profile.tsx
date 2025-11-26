@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { 
   Card, 
   CardContent, 
@@ -18,16 +18,18 @@ import {
   Shield, 
   Award, 
   Zap,
-  ArrowLeft
+  ArrowLeft,
+  LogOut
 } from "lucide-react";
 import { useUser } from "@/hooks/use-user";
 import { useGroups } from "@/hooks/use-groups";
 import { useExpenses } from "@/hooks/use-expenses";
 
 export default function Profile() {
-  const { currentUser } = useUser();
+  const { currentUser, signOut } = useUser();
   const { groups } = useGroups();
   const { expenses, getMyOwedAmounts } = useExpenses();
+  const navigate = useNavigate();
   
   const [displayUser] = useState({
     name: currentUser?.name || 'User',
@@ -112,6 +114,14 @@ export default function Profile() {
     }
   ];
 
+  const handleLogout = async () => {
+    await signOut();
+    // Add a small delay to ensure the signOut process completes before navigation
+    setTimeout(() => {
+      navigate("/login");
+    }, 100);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       <Header />
@@ -172,6 +182,15 @@ export default function Profile() {
                 <Button variant="outline" className="w-full mt-6">
                   <Settings className="h-4 w-4 mr-2" />
                   Edit Profile
+                </Button>
+                
+                <Button 
+                  variant="destructive" 
+                  className="w-full mt-3"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Logout
                 </Button>
               </CardContent>
             </Card>

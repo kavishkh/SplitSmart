@@ -183,7 +183,7 @@ export function GroupsProvider({ children }: { children: ReactNode }) {
         createdBy: currentUser?.id || 'current-user'
       });
 
-      // Transform and add to local state
+      // Transform the group data
       const transformedGroup: Group = {
         id: newGroup?.id || `group-${Date.now()}`,
         name: newGroup?.name || groupData.name || 'New Group',
@@ -197,7 +197,10 @@ export function GroupsProvider({ children }: { children: ReactNode }) {
         ownerId: newGroup?.createdBy || newGroup?.ownerId || currentUser?.id || 'current-user'
       };
 
-      setGroups(prev => [transformedGroup, ...prev]);
+      // Note: We're NOT adding the group to local state here because 
+      // the real-time update handler will take care of that
+      // This prevents duplicate groups from appearing
+      
       toast.success(`Group "${transformedGroup.name}" created successfully! 🎉`);
       console.log('✅ Created new group:', transformedGroup.name);
     } catch (error: any) {
@@ -246,17 +249,27 @@ export function GroupsProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateGroup = (groupId: string, updates: Partial<Group>) => {
+  const updateGroup = async (groupId: string, updates: Partial<Group>) => {
     // Handle case where groups might be undefined
     if (!groups) {
       console.warn('No groups available to update');
       return;
     }
     
-    setGroups(prev => prev.map(group => 
-      group.id === groupId ? { ...group, ...updates } : group
-    ));
-    console.log('📝 Updated group:', groupId);
+    try {
+      // Call the backend API to update the group
+      const updatedGroup = await groupAPI.update(groupId, updates);
+      
+      // Update local state
+      setGroups(prev => prev.map(group => 
+        group.id === groupId ? { ...group, ...updatedGroup } : group
+      ));
+      
+      console.log('📝 Updated group:', groupId);
+    } catch (error) {
+      console.error('❌ Error updating group:', error);
+      toast.error('Failed to update group. Please try again.');
+    }
   };
 
   const getGroupById = (groupId: string) => {

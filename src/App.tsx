@@ -16,7 +16,7 @@ import Expenses from "./pages/Expenses";
 import Profile from "./pages/Profile";
 import GroupDetail from "./pages/GroupDetail";
 import AddExpense from "./pages/AddExpense";
-import Login from "./pages/Login";
+import LoginWithDialog from "./pages/LoginWithDialog";
 import NotFound from "./pages/NotFound";
 import JoinGroup from "./pages/JoinGroup";
 import Settlements from "./pages/Settlements";
@@ -108,7 +108,7 @@ const App = () => {
                       <Toaster />
                       <Sonner />
                       <Routes>
-                        <Route path="/login" element={<Login />} />
+                        <Route path="/login" element={<LoginWithDialog />} />
                         <Route path="/accept" element={<AcceptInvitation />} />
                         <Route path="/" element={
                           <ProtectedRoute>

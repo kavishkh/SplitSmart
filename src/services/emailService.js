@@ -18,7 +18,8 @@ export async function sendGroupInvitationEmails({ members, groupName, inviterNam
   for (const member of membersToNotify) {
     try {
       // Generate invitation link with member email for verification
-      const invitationLink = `https://splitsmart.app/accept?groupId=${groupId}&email=${encodeURIComponent(member.email)}`;
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      const invitationLink = `${frontendUrl}/accept?groupId=${groupId}&email=${encodeURIComponent(member.email)}`;
       
       const result = await sendGroupInvitationEmail({
         to: member.email,
@@ -48,7 +49,7 @@ export async function sendGroupInvitationEmails({ members, groupName, inviterNam
  */
 export async function sendGroupInvitationEmail({ to, memberName, groupName, inviterName, invitationLink }) {
   try {
-    const response = await fetch('/api/send-invitation-email', {
+    const response = await fetch('/api/send-invite', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -66,39 +67,20 @@ export async function sendGroupInvitationEmail({ to, memberName, groupName, invi
     // Check if response is ok before trying to parse JSON
     if (!response.ok) {
       // Try to parse error response, but handle case where there's no body
-      let errorMessage = `HTTP error! status: ${response.status}`;
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
       try {
-        const errorResult = await response.json();
-        errorMessage = errorResult.error || errorMessage;
-      } catch (parseError) {
-        // If we can't parse JSON, use status text or generic message
-        errorMessage = response.statusText || errorMessage;
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorMessage;
+      } catch (e) {
+        // If we can't parse the error, use the default message
       }
       throw new Error(errorMessage);
     }
 
-    // Try to parse JSON response
-    let result;
-    try {
-      result = await response.json();
-    } catch (parseError) {
-      throw new Error('Failed to parse response from server');
-    }
-
-    // If we got a simulated response, show a friendly message
-    if (result.message) {
-      console.log('Email service message:', result.message);
-    }
-
-    console.log('Email sent successfully:', result);
-    return { success: true, data: result.data, message: result.message };
+    const data = await response.json();
+    return data;
   } catch (error) {
-    console.error('Failed to send email:', error);
+    console.error('Error sending invitation email:', error);
     return { success: false, error: error.message };
   }
 }
-
-export default {
-  sendGroupInvitationEmail,
-  sendGroupInvitationEmails
-};

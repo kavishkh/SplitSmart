@@ -28,10 +28,11 @@ import { useExpenses } from "@/hooks/use-expenses";
 import { useUser } from "@/hooks/use-user";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 const GroupDetail = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const { getGroupById, refreshGroups, updateGroup, deleteGroup } = useGroups();
   const { getExpensesByGroup, getSettlementsByGroup, calculateBalances, addSettlement, refreshExpenses, deleteExpense } = useExpenses();
   const { currentUser } = useUser();
@@ -89,7 +90,7 @@ const GroupDetail = () => {
     setShowEditMember(true);
   };
   
-  const handleSaveMember = (updatedMember: any) => {
+  const handleSaveMember = async (updatedMember: any) => {
     if (!group) return;
     
     // Update the group with the modified member
@@ -97,21 +98,21 @@ const GroupDetail = () => {
       member.id === updatedMember.id ? updatedMember : member
     );
     
-    updateGroup(group.id, {
+    await updateGroup(group.id, {
       members: updatedMembers
     });
     
     toast.success("Member updated successfully!");
   };
   
-  const handleAddMembersToGroup = (newMembers: any[]) => {
+  const handleAddMembersToGroup = async (newMembers: any[]) => {
     if (!group) return;
     
     // Combine existing members with new members
     const updatedMembers = [...group.members, ...newMembers];
     
     // Update the group with new members
-    updateGroup(group.id, {
+    await updateGroup(group.id, {
       members: updatedMembers
     });
     
@@ -123,7 +124,7 @@ const GroupDetail = () => {
     setShowDeleteMemberDialog(true);
   };
   
-  const handleDeleteMember = () => {
+  const handleDeleteMember = async () => {
     if (!group || !memberToDelete) return;
     
     // Prevent deleting the current user
@@ -139,7 +140,7 @@ const GroupDetail = () => {
       member.id !== memberToDelete.id
     );
     
-    updateGroup(group.id, {
+    await updateGroup(group.id, {
       members: updatedMembers
     });
     
@@ -160,8 +161,8 @@ const GroupDetail = () => {
       toast.success(`Group "${group.name}" deleted successfully`);
       setShowDeleteGroupDialog(false);
       
-      // Navigate to home page
-      window.location.href = "/";
+      // Navigate to home page using React Router
+      navigate("/");
     } catch (error) {
       console.error('Error deleting group:', error);
       toast.error('Failed to delete group');
@@ -714,7 +715,7 @@ const GroupDetail = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteMember} className="bg-destructive hover:bg-destructive/90">
+            <AlertDialogAction onClick={() => handleDeleteMember()} className="bg-destructive hover:bg-destructive/90">
               Remove Member
             </AlertDialogAction>
           </AlertDialogFooter>
