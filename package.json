@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "node server/server.js",
+    "server": "nodemon server/server.js",
     "dev:full": "concurrently \"npm:dev\" \"npm:server\"",
     "init:mongodb": "node server/scripts/initMongoDB.js",
     "test:email:setup": "node server/scripts/emailSetupHelper.js",
